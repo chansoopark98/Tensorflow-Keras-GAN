@@ -12,8 +12,8 @@ import tensorflow_addons as tfa
 tf.keras.backend.clear_session()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=64)
-parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=10)
+parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=128)
+parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=100)
 parser.add_argument("--lr",             type=float, help="Learning rate 설정", default=0.001)
 parser.add_argument("--weight_decay",   type=float, help="Weight Decay 설정", default=0.0005)
 parser.add_argument("--optimizer",     type=str,   help="Optimizer", default='adam')
@@ -37,7 +37,8 @@ SAVE_MODEL_NAME = args.model_name
 DATASET_DIR = args.dataset_dir
 CHECKPOINT_DIR = args.checkpoint_dir
 TENSORBOARD_DIR = args.tensorboard_dir
-IMAGE_SIZE = (224, 224)
+# IMAGE_SIZE = (224, 224)
+IMAGE_SIZE = (224, 168)
 num_classes = 2
 # IMAGE_SIZE = (None, None)
 USE_WEIGHT_DECAY = args.use_weightDecay
@@ -100,30 +101,20 @@ if MIXED_PRECISION:
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
 
-callback = [tensorboard,  lr_scheduler,checkpoint_val_loss]
+callback = [tensorboard,  lr_scheduler, checkpoint_val_loss]
 
 
 
 if DISTRIBUTION_MODE:
-    # mirrored_strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
-    #     tf.distribute.experimental.CollectiveCommunication.NCCL)
-    # mirrored_strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
     mirrored_strategy = tf.distribute.MirroredStrategy()
-
     with mirrored_strategy.scope():
         print("Number of devices: {}".format(mirrored_strategy.num_replicas_in_sync))
 
         model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 
-        # losses = {'output': loss.ce_loss,
-        #           'edge': edge_loss.sigmoid_loss,
-        #           'body': body_loss.body_loss,
-        #           'aux': aux_loss.ce_loss,
-        #           }
-
         model.compile(
             optimizer=optimizer,
-            loss='mse')
+            loss='mse', metrics='psnr')
 
 
         if LOAD_WEIGHT:

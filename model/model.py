@@ -17,31 +17,19 @@ CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=1.0, mode=
 atrous_rates= (6, 12, 18)
 activation = 'swish'
 
-def colorization_model(input_shape=(512, 1024, 3), classes=19):
+def colorization_model(input_shape=(224, 168, 1), classes=2):
     base = EfficientNetV2S(input_shape=input_shape, pretrained="imagenet")
-    base.summary()
 
-    c5 = base.get_layer('add_34').output  # 16x32 256 or get_layer('post_swish') => 확장된 채널 1280
-    # c5 = base.get_layer('post_swish').output  # 32x64 256 or get_layer('post_swish') => 확장된 채널 1280
-    # c4 = base.get_layer('add_20').output  # 32x64 64
-    c3 = base.get_layer('add_7').output  # 64x128 48
-    # c2 = base.get_layer('add_6').output  # 128x256 48
-    c2 = base.get_layer('add_4').output  # 128x256 48
-    """
-    for EfficientNetV2S
-    32x64 = 'add_34'
-    64x128 = 'add_7'
-    128x256 = 'add_4'
-    """
-    features = [c2, c3, c5]
+    c1 = base.get_layer('add_1').output  # 112x84 @24
+    c2 = base.get_layer('add_4').output  # 56x42 @48
+    c3 = base.get_layer('add_7').output  # 28x21 @64
+    c4 = base.get_layer('add_20').output  # 14x11 @160
+    x = base.get_layer('add_34').output  # 7x6 @256
 
     model_input = base.input
-    # model_output, aspp_aux = deepLabV3Plus(features=features, fpn_times=2, activation='swish', mode='deeplabv3+')
-
-    skip1, _, x = features # c1 48 / c2 64
 
     # Image Feature branch
-    shape_before = tf.shape(x)
+
     b4 = GlobalAveragePooling2D()(x)
     b4_shape = tf.keras.backend.int_shape(b4)
     # from (b_size, channels)->(b_size, 1, 1, channels)
@@ -85,30 +73,59 @@ def colorization_model(input_shape=(512, 1024, 3), classes=19):
     x = BN(name='concat_projection_BN', epsilon=1e-5)(x)
     x = Activation(activation)(x)
 
-    x = Dropout(0.1)(x)
+    x = Dropout(0.5)(x)
 
-    skip_size = tf.keras.backend.int_shape(skip1)
+    # -- end ASPP branch -- #
+
+    ### Decoder C4 branch ###
+    size_before = tf.keras.backend.int_shape(c4)
     x = tf.keras.layers.experimental.preprocessing.Resizing(
-        *skip_size[1:3], interpolation="bilinear"
-    )(x)
+            *size_before[1:3], interpolation="bilinear"
+        )(x)
 
-    # x = UpSampling2D((4,4), interpolation='bilinear')(x)
-
-    dec_skip1 = Conv2D(48, (1, 1), padding='same',
-                       kernel_regularizer=DECAY,
-                       use_bias=False, name='feature_projection0')(skip1)
-    # dec_skip1 = BatchNormalization(
-    #     name='feature_projection0_BN', epsilon=1e-5)(dec_skip1)
-    dec_skip1 = BN(
-        name='feature_projection0_BN', epsilon=1e-5)(dec_skip1)
-    dec_skip1 = Activation(activation)(dec_skip1)
-    x = Concatenate()([x, dec_skip1])
-    x = SepConv_BN(x, 256, 'decoder_conv0',
-                   depth_activation=True, epsilon=1e-5)
-    x = SepConv_BN(x, 256, 'decoder_conv1',
+    c4 = Conv1x1(c4, 160)
+    x = Concatenate()([x, c4])
+    x = SepConv_BN(x, 256, 'decoder_c4',
                    depth_activation=True, epsilon=1e-5)
 
-    x = classifier(x, num_classes=classes, upper=4, name='output')
+    ### Decoder C3 branch ###
+    size_before = tf.keras.backend.int_shape(c3)
+    x = tf.keras.layers.experimental.preprocessing.Resizing(
+            *size_before[1:3], interpolation="bilinear"
+        )(x)
+
+    c3 = Conv1x1(c3, 64)
+    x = Concatenate()([x, c3])
+    x = SepConv_BN(x, 256, 'decoder_c3',
+                   depth_activation=True, epsilon=1e-5)
+
+
+    ### Decoder C2 branch ###
+    size_before = tf.keras.backend.int_shape(c2)
+    x = tf.keras.layers.experimental.preprocessing.Resizing(
+            *size_before[1:3], interpolation="bilinear"
+        )(x)
+
+    c2 = Conv1x1(c2, 48)
+    x = Concatenate()([x, c2])
+    x = SepConv_BN(x, 256, 'decoder_c2',
+                   depth_activation=True, epsilon=1e-5)
+
+    ### Decoder C1 branch ###
+    size_before = tf.keras.backend.int_shape(c1)
+    x = tf.keras.layers.experimental.preprocessing.Resizing(
+            *size_before[1:3], interpolation="bilinear"
+        )(x)
+
+    c1 = Conv1x1(c1, 24)
+    x = Concatenate()([x, c1])
+    x = SepConv_BN(x, 256, 'decoder_c1',
+                   depth_activation=True, epsilon=1e-5)
+
+    x = SepConv_BN(x, 256, 'decoder_final',
+                   depth_activation=True, epsilon=1e-5)
+
+    x = classifier(x, num_classes=classes, upper=2, name='output')
 
     return model_input, x
 
@@ -127,6 +144,15 @@ def edge_classifier(x, upper=4, name=None):
                       kernel_initializer=CONV_KERNEL_INITIALIZER)(x)
     x = Activation('sigmoid')(x)
     x = layers.UpSampling2D(size=(upper, upper), interpolation='bilinear', name=name)(x)
+    return x
+
+def Conv1x1(x, channel, epsilon=1e-5):
+    x = Conv2D(channel, (1, 1), padding='same',
+                       kernel_regularizer=DECAY,
+                       use_bias=False)(x)
+    x = BN(epsilon=epsilon)(x)
+    x = Activation(activation)(x)
+
     return x
 
 def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3):

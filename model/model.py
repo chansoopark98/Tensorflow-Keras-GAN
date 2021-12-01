@@ -1,17 +1,16 @@
 from model.EfficientNetV2 import EfficientNetV2S
 from tensorflow.keras import layers
-from tensorflow.keras.layers import (AveragePooling2D,
-    MaxPooling2D, SeparableConv2D, UpSampling2D, Activation, BatchNormalization,
-    GlobalAveragePooling2D, Conv2D, Dropout, Concatenate, multiply, Add, concatenate,
-    DepthwiseConv2D, Reshape, ZeroPadding2D, Dense, GlobalMaxPooling2D, Permute, Lambda, Subtract)
-import tensorflow.keras.backend as K
+from tensorflow.keras.layers import (
+    UpSampling2D, Activation, BatchNormalization,
+    GlobalAveragePooling2D, Conv2D, Dropout, Concatenate,
+    DepthwiseConv2D, Reshape, ZeroPadding2D)
+
 import tensorflow as tf
-import tensorflow_addons as tfa
 
 MOMENTUM = 0.99
 EPSILON = 1e-5
-# DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
-DECAY = None
+DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
+# DECAY = None
 BN = tf.keras.layers.experimental.SyncBatchNormalization
 CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=1.0, mode="fan_out", distribution="truncated_normal")
 atrous_rates= (6, 12, 18)

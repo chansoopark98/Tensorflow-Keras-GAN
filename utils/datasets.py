@@ -8,7 +8,7 @@ AUTO = tf.data.experimental.AUTOTUNE
 
 
 class Dataset:
-    def __init__(self, data_dir, image_size, batch_size, mode, dataset='celeb_a'):
+    def __init__(self, data_dir, image_size, batch_size, mode, dataset='CustomCeleba'):
         """
         Args:
             data_dir: 데이터셋 상대 경로 ( default : './datasets/' )
@@ -24,15 +24,6 @@ class Dataset:
             self.train_data, self.number_train = self._load_train_datasets()
         elif mode == 'validation':
             self.valid_data, self.number_valid = self._load_valid_datasets()
-        else:
-            self._initial_load()
-
-    def _initial_load(self):
-        dataset = tfds.load(self.dataset_name,
-                               data_dir=self.data_dir)
-
-        number_dataset = dataset.reduce(0, lambda x, _: x + 1).numpy()
-        print("검증 데이터 개수:", number_dataset)
 
     def _load_valid_datasets(self):
         valid_data = tfds.load(self.dataset_name,
@@ -54,45 +45,58 @@ class Dataset:
 
 
     def load_test(self, sample):
-        # img = sample['image_left']
         img = sample['image']
-        # labels = sample['segmentation_label']-1
-        labels = sample['label']
 
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
-        labels = tf.image.resize(labels, (self.image_size[0], self.image_size[1]),
-                                 method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-
-        img = tf.cast(img, dtype=tf.float32)
-        labels = tf.cast(labels, dtype=tf.int64)
-
-        # if self.model_name == 'ddrnet':
-        # img = imgNetNorm(img)
         img = preprocess_input(img, mode='tf')
 
-        # img = (img - self.mean) / self.std
+        r = img[:, :, 0]
+        # g = img[:, :, 1]
+        # b = img[:, :, 2]
 
-        # img = img / 255.0
-        # img -= [0.485, 0.456, 0.406] # imageNet mean
-        # img /= [0.229, 0.224, 0.225] # imageNet std
+        r = tf.expand_dims(r, -1)
+        # g = tf.expand_dims(g, -1)
+        # b = tf.expand_dims(b, -1)
+        # concat = tf.concat([r, g, b], axis=-1)
 
-        return (img, labels)
+        return (r, img)
 
 
     @tf.function
     def preprocess(self, sample):
         img = sample['image']
 
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
+        img = preprocess_input(img, mode='tf')
 
+        r = img[:, :, 0]
+        # g = img[:, :, 1]
+        # b = img[:, :, 2]
 
+        r = tf.expand_dims(r, -1)
+        # g = tf.expand_dims(g, -1)
+        # b = tf.expand_dims(b, -1)
+        # concat = tf.concat([r, g, b], axis=-1)
 
-        return (img)
+        return (r, img)
 
     @tf.function
     def preprocess_valid(self, sample):
         img = sample['image']
 
-        return (img)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
+        img = preprocess_input(img, mode='tf')
+
+        r = img[:, :, 0]
+        # g = img[:, :, 1]
+        # b = img[:, :, 2]
+
+        r = tf.expand_dims(r, -1)
+        # g = tf.expand_dims(g, -1)
+        # b = tf.expand_dims(b, -1)
+        # concat = tf.concat([r, g, b], axis=-1)
+
+        return (r, img)
 
 
     @tf.function
@@ -150,7 +154,7 @@ class Dataset:
     def get_trainData(self, train_data):
         train_data = train_data.shuffle(800)
         train_data = train_data.map(self.preprocess, num_parallel_calls=AUTO)
-        train_data = train_data.map(self.augmentation, num_parallel_calls=AUTO)
+        # train_data = train_data.map(self.augmentation, num_parallel_calls=AUTO)
         train_data = train_data.padded_batch(self.batch_size)
         train_data = train_data.prefetch(AUTO)
         train_data = train_data.repeat()

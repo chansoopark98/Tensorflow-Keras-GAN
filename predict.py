@@ -55,14 +55,10 @@ if MIXED_PRECISION:
 os.makedirs(DATASET_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-
-# Create Dataset
-# dataset_config = CityScapes(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE)
-
-dataset = Dataset(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE, mode='validation')
-test_steps = dataset.number_valid // BATCH_SIZE
-
-test_set = dataset.get_testData(dataset.valid_data)
+# if use celebA dataset evaluation
+# dataset = Dataset(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE, mode='validation')
+# test_steps = dataset.number_valid // BATCH_SIZE
+# test_set = dataset.get_testData(dataset.valid_data)
 
 model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 
@@ -76,40 +72,38 @@ batch_index = 1
 save_path = './checkpoints/results/'+SAVE_MODEL_NAME+'/'
 os.makedirs(save_path, exist_ok=True)
 
+def demo_prepare(path):
+    img = tf.io.read_file(path)
+    img = tf.image.decode_jpeg(img, channels=3)
+    img = tf.image.resize(img, IMAGE_SIZE, method=tf.image.ResizeMethod.BILINEAR)
+    img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='tf')
 
-for x, y in tqdm(test_set, total=test_steps):
-    pred = model.predict_on_batch(x)#pred = tf.nn.softmax(pred)
-    #
-    # arg_pred = tf.math.argmax(pred[1], axis=-1)
-    # arg_pred = pred[1]
-    # plt.imshow(arg_pred[0])
-    # plt.show()
+    r = img[:, :, 0]
+    r = tf.expand_dims(r, -1)
 
-    #
-    # arg_pred = tf.math.argmax(pred[2], axis=-1)
-    # plt.imshow(arg_pred[0])
-    # plt.show()
-    #
-    # arg_pred = tf.math.argmax(pred[3], axis=-1)
-    # plt.imshow(arg_pred[0])
-    # plt.show()
+    return (r, img)
+
+filenames = os.listdir('./demo_images')
+filenames.sort()
+demo_imgs = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
+demo_test = demo_imgs.map(demo_prepare)
+demo_test = demo_test.batch(BATCH_SIZE)
+demo_steps = len(filenames) // BATCH_SIZE
+
+for r, img in tqdm(demo_test, total=demo_steps):
+    pred = model.predict_on_batch(r)#pred = tf.nn.softmax(pred)
+
 
     pred = pred[0]
-    # pred = tfio.experimental.color.bgr_to_rgb(pred)
     pred += 1.
     pred *= 127.5
     pred = tf.cast(pred, tf.int32)
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + 'input.jpg', x[0])
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + 'gt.jpg', y[0])
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + 'out.jpg', pred)
+
+    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', r[0])
+    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
+    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
 
     batch_index +=1
-
-
-    # plt.imshow(pred)
-    # plt.show()
-
-
 
 
 

@@ -50,22 +50,24 @@ class Dataset:
 
 
     def load_test(self, sample):
-        img = sample['image']
+        img = tf.cast(sample['image'], tf.float32)
 
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
+
+        img = tf.image.resize_with_crop_or_pad(img, 224, 168)
+        # img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
         img = preprocess_input(img, mode='tf')
 
         r = img[:, :, 0]
-        # g = img[:, :, 1]
-        # b = img[:, :, 2]
+        g = img[:, :, 1]
+        b = img[:, :, 2]
 
         r = tf.expand_dims(r, -1)
-        # g = tf.expand_dims(g, -1)
-        # b = tf.expand_dims(b, -1)
-        # concat = tf.concat([r, g, b], axis=-1)
+        g = tf.expand_dims(g, -1)
+        b = tf.expand_dims(b, -1)
 
-        return (r, img)
+        gt = tf.concat([g, b], axis=-1)
 
+        return (r, gt)
 
     @tf.function
     def preprocess(self, sample):
@@ -85,6 +87,11 @@ class Dataset:
         b = tf.expand_dims(b, -1)
 
         gt = tf.concat([g, b], axis=-1)
+
+        # data augmentation
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            r = tf.image.flip_left_right(r)
+            gt = tf.image.flip_left_right(gt)
 
         return (r, gt)
 
@@ -108,62 +115,10 @@ class Dataset:
 
         return (r, gt)
 
-    @tf.function
-    def augmentation(self, img, labels):
-        if tf.random.uniform([]) > 0.5:
-            img = tf.image.random_saturation(img, 0.5, 1.5)
-        if tf.random.uniform([]) > 0.5:
-            img = tf.image.random_brightness(img, 0.05)
-        if tf.random.uniform([]) > 0.5:
-            img = tf.image.random_contrast(img, 0.5, 1.5)
-        if tf.random.uniform([]) > 0.5:
-            img = tf.image.flip_left_right(img)
-            labels = tf.image.flip_left_right(labels)
-
-        img = tf.cast(img, dtype=tf.float32)
-        labels = tf.cast(labels, dtype=tf.int32)
-
-        # if tf.random.uniform([]) > 0.5:
-        #     img, labels = self.zoom(img, labels, 0.8, 1.2)
-
-
-
-        img = preprocess_input(img, mode='tf')
-        # img = (img - self.mean) / self.std
-
-        # img = img / 255.0
-        # img -= [0.485, 0.456, 0.406] # imageNet mean
-
-        # if self.model_name == 'ddrnet':
-        # img = imgNetNorm(img)
-
-        return (img, labels)
-
-    @tf.function
-    def zoom(self, x, labels, scale_min=0.6, scale_max=1.6):
-        h, w, _ = x.shape
-        scale = tf.random.uniform([], scale_min, scale_max)
-        nh = h * scale
-        nw = w * scale
-        x = tf.image.resize(x, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
-        labels = tf.image.resize(labels, (nh, nw), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-        x = tf.image.resize_with_crop_or_pad(x, h, w)
-        labels = tf.image.resize_with_crop_or_pad(labels, h, w)
-        return x, labels
-
-    @tf.function
-    def rotate(self, x, labels, angle=(-45, 45)):
-        angle = tf.random.uniform([], angle[0], angle[1], tf.float32)
-        theta = np.pi * angle / 180
-
-        x = tfa.image.rotate(x, theta, interpolation="bilinear")
-        labels = tfa.image.rotate(labels, theta)
-        return (x, labels)
 
     def get_trainData(self, train_data):
-        train_data = train_data.shuffle(800)
+        train_data = train_data.shuffle(1600)
         train_data = train_data.map(self.preprocess, num_parallel_calls=AUTO)
-        # train_data = train_data.map(self.augmentation, num_parallel_calls=AUTO)
         train_data = train_data.padded_batch(self.batch_size)
         train_data = train_data.prefetch(AUTO)
         train_data = train_data.repeat()

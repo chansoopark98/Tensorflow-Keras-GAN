@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 datasets/
+checkpoints/results/
 # C extensions
 *.so
 

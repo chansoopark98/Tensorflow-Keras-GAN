@@ -41,7 +41,7 @@ CHECKPOINT_DIR = args.checkpoint_dir
 TENSORBOARD_DIR = args.tensorboard_dir
 MODEL_NAME = args.backbone_model
 TRAIN_MODE = args.train_dataset
-IMAGE_SIZE = (224, 224)
+IMAGE_SIZE = (224, 168)
 num_classes = 2
 USE_WEIGHT_DECAY = args.use_weightDecay
 LOAD_WEIGHT = args.load_weight
@@ -62,26 +62,35 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 
-weight_name = '_1201_best_loss'
+weight_name = '_1202_best_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
 
 
 buffer = 0
 batch_index = 1
-save_path = './checkpoints/results/'+SAVE_MODEL_NAME+'/'
+save_path = './demo_outputs/'+SAVE_MODEL_NAME+'/'
 os.makedirs(save_path, exist_ok=True)
 
 def demo_prepare(path):
     img = tf.io.read_file(path)
     img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.resize(img, IMAGE_SIZE, method=tf.image.ResizeMethod.BILINEAR)
+    img = tf.image.resize_with_pad(img, 224, 168)
+    # img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
+    img = tf.cast(img, tf.float32)
     img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='tf')
 
     r = img[:, :, 0]
-    r = tf.expand_dims(r, -1)
+    g = img[:, :, 1]
+    b = img[:, :, 2]
 
-    return (r, img)
+    r = tf.expand_dims(r, -1)
+    g = tf.expand_dims(g, -1)
+    b = tf.expand_dims(b, -1)
+
+    gt = tf.concat([g, b], axis=-1)
+
+    return (r, gt)
 
 filenames = os.listdir('./demo_images')
 filenames.sort()
@@ -91,21 +100,43 @@ demo_test = demo_test.batch(BATCH_SIZE)
 demo_steps = len(filenames) // BATCH_SIZE
 
 for r, img in tqdm(demo_test, total=demo_steps):
-    pred = model.predict_on_batch(r)#pred = tf.nn.softmax(pred)
 
+    pred = model.predict_on_batch(r)
 
-    pred = pred[0]
-    pred += 1.
-    pred *= 127.5
-    pred = tf.cast(pred, tf.int32)
+    output = tf.concat([r[0], pred[0]], axis=-1)
+    orininal = tf.concat([r[0], img[0]], axis=-1)
 
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', r[0])
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
+    # pred = pred[0]
+    output += 1.
+    output *= 127.5
+    output = tf.cast(output, tf.uint8)
 
-    batch_index +=1
+    orininal += 1.
+    orininal *= 127.5
+    orininal = tf.cast(orininal, tf.uint8)
 
+    fig = plt.figure()
 
+    ax0 = fig.add_subplot(1, 3, 1)
+    ax0.imshow(r[0])
+    ax0.set_title('R channel Input')
+    ax0.axis("off")
+
+    ax1 = fig.add_subplot(1, 3, 2)
+    ax1.imshow(output)
+    ax1.set_title('Colorization result')
+    ax1.axis("off")
+
+    ax2 = fig.add_subplot(1, 3, 3)
+    ax2.imshow(orininal)
+    ax2.set_title('Orinigal Image')
+    ax2.axis("off")
+
+    # plt.show()
+    # plt.savefig('fig1.png', dpi=300)
+    plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+
+    batch_index += 1
 
 
 

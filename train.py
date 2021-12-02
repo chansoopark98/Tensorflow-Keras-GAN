@@ -114,7 +114,7 @@ if DISTRIBUTION_MODE:
 
         model.compile(
             optimizer=optimizer,
-            loss='mse', metrics='psnr')
+            loss='mse')
 
 
         if LOAD_WEIGHT:

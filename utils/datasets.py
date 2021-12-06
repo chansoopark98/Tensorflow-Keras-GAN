@@ -1,4 +1,5 @@
 from tensorflow.keras.applications.imagenet_utils import preprocess_input
+import tensorflow_io as tfio
 import tensorflow_datasets as tfds
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -8,7 +9,7 @@ AUTO = tf.data.experimental.AUTOTUNE
 
 
 class Dataset:
-    def __init__(self, data_dir, image_size, batch_size, mode, dataset='CustomCeleba'):
+    def __init__(self, data_dir, image_size, batch_size, mode, dataset='CustomCelebahq'):
         """
         Args:
             data_dir: 데이터셋 상대 경로 ( default : './datasets/' )
@@ -27,12 +28,8 @@ class Dataset:
             self.valid_data, self.number_valid = self._load_valid_datasets()
 
     def _load_valid_datasets(self):
-        if self.dataset_name == 'CustomCelebahq':
-            val_dataset_name = 'CustomCeleba'
-        else:
-            val_dataset_name = 'CustomCeleba'
-        valid_data = tfds.load(val_dataset_name,
-                               data_dir=self.data_dir, split='validation')
+        valid_data = tfds.load(self.dataset_name,
+                               data_dir=self.data_dir, split='train[:5%]')
 
         number_valid = valid_data.reduce(0, lambda x, _: x + 1).numpy()
         print("검증 데이터 개수:", number_valid)
@@ -41,7 +38,7 @@ class Dataset:
 
     def _load_train_datasets(self):
         train_data = tfds.load(self.dataset_name,
-                               data_dir=self.data_dir, split='train')
+                               data_dir=self.data_dir, split='train[5%:]')
 
         number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
         print("학습 데이터 개수", number_train)
@@ -51,69 +48,80 @@ class Dataset:
 
     def load_test(self, sample):
         img = tf.cast(sample['image'], tf.float32)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img /= 255.
 
+        img = tfio.experimental.color.rgb_to_lab(img)
 
-        img = tf.image.resize_with_crop_or_pad(img, 224, 168)
-        # img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
-        img = preprocess_input(img, mode='tf')
-
-        r = img[:, :, 0]
-        g = img[:, :, 1]
+        L = img[:, :, 0]
+        L /= 100.
+        a = img[:, :, 1]
+        a /= 127.
         b = img[:, :, 2]
+        b /= 127.
 
-        r = tf.expand_dims(r, -1)
-        g = tf.expand_dims(g, -1)
+        L = tf.expand_dims(L, -1)
+        a = tf.expand_dims(a, -1)
         b = tf.expand_dims(b, -1)
+        #
+        ab_channel = tf.concat([a, b], axis=-1)
 
-        gt = tf.concat([g, b], axis=-1)
 
-        return (r, gt)
+
+        return (L, ab_channel)
+
+
 
     @tf.function
     def preprocess(self, sample):
         img = tf.cast(sample['image'], tf.float32)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img /= 255.
 
-        img = tf.image.resize_with_crop_or_pad(img, 224, 168)
-        # img = tf.image.resize_with_pad(img, 224, 168)
-        # img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
-        img = preprocess_input(img, mode='tf')
+        img = tfio.experimental.color.rgb_to_lab(img)
 
-        r = img[:, :, 0]
-        g = img[:, :, 1]
+        L = img[:, :, 0]
+        L /= 100.
+        a = img[:, :, 1]
+        a /= 127.
         b = img[:, :, 2]
+        b /= 127.
 
-        r = tf.expand_dims(r, -1)
-        g = tf.expand_dims(g, -1)
+        L = tf.expand_dims(L, -1)
+        a = tf.expand_dims(a, -1)
         b = tf.expand_dims(b, -1)
-
-        gt = tf.concat([g, b], axis=-1)
+        #
+        ab_channel = tf.concat([a, b], axis=-1)
 
         # data augmentation
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-            r = tf.image.flip_left_right(r)
-            gt = tf.image.flip_left_right(gt)
+            L = tf.image.flip_left_right(L)
+            ab_channel = tf.image.flip_left_right(ab_channel)
 
-        return (r, gt)
+        return (L, ab_channel)
 
     @tf.function
     def preprocess_valid(self, sample):
         img = tf.cast(sample['image'], tf.float32)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img /= 255.
 
-        img = tf.image.resize_with_crop_or_pad(img, 224, 168)
-        # img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
-        img = preprocess_input(img, mode='tf')
+        img = tfio.experimental.color.rgb_to_lab(img)
 
-        r = img[:, :, 0]
-        g = img[:, :, 1]
+        L = img[:, :, 0]
+        L /= 100.
+        a = img[:, :, 1]
+        a /= 127.
         b = img[:, :, 2]
+        b /= 127.
 
-        r = tf.expand_dims(r, -1)
-        g = tf.expand_dims(g, -1)
+        L = tf.expand_dims(L, -1)
+        a = tf.expand_dims(a, -1)
         b = tf.expand_dims(b, -1)
+        #
+        ab_channel = tf.concat([a, b], axis=-1)
 
-        gt = tf.concat([g, b], axis=-1)
-
-        return (r, gt)
+        return (L, ab_channel)
 
 
     def get_trainData(self, train_data):

@@ -52,8 +52,8 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 TRAIN_INPUT_IMAGE_SIZE = IMAGE_SIZE
 VALID_INPUT_IMAGE_SIZE = IMAGE_SIZE
-train_dataset_config = Dataset(DATASET_DIR, TRAIN_INPUT_IMAGE_SIZE, BATCH_SIZE, mode='train', dataset='CustomCeleba')
-valid_dataset_config = Dataset(DATASET_DIR, VALID_INPUT_IMAGE_SIZE, BATCH_SIZE, mode='validation', dataset='CustomCeleba')
+train_dataset_config = Dataset(DATASET_DIR, TRAIN_INPUT_IMAGE_SIZE, BATCH_SIZE, mode='train', dataset='CustomCelebahq')
+valid_dataset_config = Dataset(DATASET_DIR, VALID_INPUT_IMAGE_SIZE, BATCH_SIZE, mode='validation', dataset='CustomCelebahq')
 
 train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
 # train_data = mirrored_strategy.experimental_distribute_dataset(train_data)

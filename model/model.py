@@ -48,32 +48,22 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
 
     ### Decoder C4 branch ###
     x = Upsampling(x, channel=1024)
-    c4 = Conv1x1(c4, channel=512)
     x = Concatenate()([x, c4])
-    x = Conv1x1(x, 1024)
     x = Conv3x3(x, 1024, rate=1)
-
-
 
     ### Decoder C3 branch ###
     x = Upsampling(x, channel=512)
-    c3 = Conv1x1(c3, channel=256)
     x = Concatenate()([x, c3])
-    x = Conv1x1(x, 512)
     x = Conv3x3(x, 512, rate=1)
 
     ### Decoder C2 branch ###
     x = Upsampling(x, channel=256)
-    c2 = Conv1x1(c2, channel=128)
     x = Concatenate()([x, c2])
-    x = Conv1x1(x, 256)
     x = Conv3x3(x, 256, rate=1)
 
     ### Decoder C1 branch ###
     x = Upsampling(x, channel=128)
-    c1 = Conv1x1(c1, channel=64)
     x = Concatenate()([x, c1])
-    x = Conv1x1(x, 128)
     x = Conv3x3(x, 128, rate=1)
 
     ### Decoder output branch ###
@@ -88,8 +78,7 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
 
 
 def classifier(x, num_classes=2, upper=2, name=None):
-    x = layers.Conv2D(num_classes, 1, strides=1,
-                      kernel_regularizer=DECAY,
+    x = layers.Conv2D(num_classes, 3, strides=1, activation='tanh',
                       kernel_initializer=CONV_KERNEL_INITIALIZER, name=name)(x)
 
     return x
@@ -131,6 +120,8 @@ def Upsampling(x, channel):
     # x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
     # x = Activation(activation)(x)
 
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
+
     x = Conv2D(channel, (1, 1), padding='same',
                        kernel_regularizer=DECAY,
                         kernel_initializer=CONV_KERNEL_INITIALIZER,
@@ -138,7 +129,7 @@ def Upsampling(x, channel):
     x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
     x = Activation(activation)(x)
 
-    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
+
 
     return x
 

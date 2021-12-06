@@ -10,32 +10,45 @@ parser.add_argument("--dataset_dir", type=str, help="데이터셋 다운로드 �
 args = parser.parse_args()
 
 DATASET_DIR = args.dataset_dir
-IMAGE_SIZE = (224, 224)
+IMAGE_SIZE = (512, 512)
 
 # train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
 
 if __name__ == "__main__":
     train_dataset_config = Dataset(DATASET_DIR, IMAGE_SIZE, batch_size=1, mode='train')
-    train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
+    train_data = train_dataset_config.dataset_test(train_dataset_config.train_data)
 
 
-    buffer = ''
-    id_list = []
-    stack = 0
-    batch_index = 0
-    # save_path = './checkpoints/results/' + SAVE_MODEL_NAME + '/'
 
-    for r, img in train_data.take(100):
+    for l, ab in train_data.take(100):
 
 
-        red = r[0]
-        img = img[0]
-        img = tf.cast(img, tf.uint8)
+        L = l[0]
+        a = ab[0][:, :, 0]
+        b = ab[0][:, :, 1]
 
-        plt.imshow(red)
+
+        rows = 1
+        cols = 3
+
+        fig = plt.figure()
+
+        ax1 = fig.add_subplot(rows, cols, 1)
+        ax1.imshow(L)
+        ax1.set_title('L image')
+        ax1.axis("off")
+
+        ax2 = fig.add_subplot(rows, cols, 2)
+        ax2.imshow(a)
+        ax2.set_title('a image')
+        ax2.axis("off")
+
+        ax3 = fig.add_subplot(rows, cols, 3)
+        ax3.imshow(b)
+        ax3.set_title('b image')
+        ax3.axis("off")
+
         plt.show()
 
-        plt.imshow(img)
-        plt.show()
 
 

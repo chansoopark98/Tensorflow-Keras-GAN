@@ -1,10 +1,6 @@
-from tensorflow.keras.applications.imagenet_utils import preprocess_input
 import tensorflow_io as tfio
 import tensorflow_datasets as tfds
 import tensorflow as tf
-import tensorflow_addons as tfa
-import numpy as np
-
 AUTO = tf.data.experimental.AUTOTUNE
 
 
@@ -123,6 +119,28 @@ class Dataset:
 
         return (L, ab_channel)
 
+    @tf.function
+    def load_original_img(self, sample):
+        img = tf.cast(sample['image'], tf.float32)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img /= 255.
+
+        img = tfio.experimental.color.rgb_to_lab(img)
+
+        L = img[:, :, 0]
+        L /= 100.
+        a = img[:, :, 1]
+        a /= 127.
+        b = img[:, :, 2]
+        b /= 127.
+
+        L = tf.expand_dims(L, -1)
+        a = tf.expand_dims(a, -1)
+        b = tf.expand_dims(b, -1)
+        #
+        ab_channel = tf.concat([a, b], axis=-1)
+
+        return (L, ab_channel)
 
     def get_trainData(self, train_data):
         train_data = train_data.shuffle(1600)
@@ -142,3 +160,8 @@ class Dataset:
         valid_data = valid_data.map(self.load_test)
         valid_data = valid_data.batch(self.batch_size).prefetch(AUTO)
         return valid_data
+
+    def dataset_test(self, train_data):
+        train_data = train_data.map(self.load_original_img)
+        train_data = train_data.batch(self.batch_size).prefetch(AUTO)
+        return train_data

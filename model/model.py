@@ -1,139 +1,97 @@
 from model.EfficientNetV2 import EfficientNetV2S
+from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
-    UpSampling2D, Activation, BatchNormalization,
+    UpSampling2D, Activation, BatchNormalization, Conv2DTranspose,
     GlobalAveragePooling2D, Conv2D, Dropout, Concatenate,
     DepthwiseConv2D, Reshape, ZeroPadding2D)
 
 import tensorflow as tf
 
-MOMENTUM = 0.99
+MOMENTUM = 0.9
 EPSILON = 1e-5
 DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
 # DECAY = None
 BN = tf.keras.layers.experimental.SyncBatchNormalization
-CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=1.0, mode="fan_out", distribution="truncated_normal")
-atrous_rates= (6, 12, 18)
-activation = 'swish'
+# BN = BatchNormalization
+# CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=1.0, mode="fan_out", distribution="truncated_normal")
+CONV_KERNEL_INITIALIZER = "he_normal"
+activation = 'relu'
 
-def colorization_model(input_shape=(224, 168, 1), classes=2):
-    base = EfficientNetV2S(input_shape=input_shape, pretrained="imagenet")
+def colorization_model(input_shape=(512, 512, 1), classes=2):
+    base = resnest.resnest101(input_shape=input_shape, include_top=False, weights="imagenet", input_tensor=None,
+                               classes=1000)
+    # base.summary()
 
-    c1 = base.get_layer('add_1').output  # 112x84 @24
-    c2 = base.get_layer('add_4').output  # 56x42 @48
-    c3 = base.get_layer('add_7').output  # 28x21 @64
-    c4 = base.get_layer('add_20').output  # 14x11 @160
-    x = base.get_layer('add_34').output  # 7x6 @256
+    """ EfficientNetV2S """
+    # base = EfficientNetV2S(input_shape=input_shape, pretrained="imagenet")
+    # c1 = base.get_layer('add_1').output  # 112x84 @24
+    # c2 = base.get_layer('add_4').output  # 56x42 @48
+    # c3 = base.get_layer('add_7').output  # 28x21 @64
+    # c4 = base.get_layer('add_20').output  # 14x11 @160
+    # x = base.get_layer('add_34').output  # 7x6 @256
+
+
+    """ ResNest-101"""
+    c1 = base.get_layer('stem_act3').output  # 1/2 @ 128
+
+    c2 = base.get_layer('stage1_block3_shorcut_act').output  # 1/4 @ 256
+
+    c3 = base.get_layer('stage2_block4_shorcut_act').output  # 1/8 @ 512
+
+    c4 = base.get_layer('stage3_block23_shorcut_act').output  # 1/16 @ 1024
+
+    x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048
 
     model_input = base.input
 
-    # Image Feature branch
-
-    b4 = GlobalAveragePooling2D()(x)
-    b4_shape = tf.keras.backend.int_shape(b4)
-    # from (b_size, channels)->(b_size, 1, 1, channels)
-    b4 = Reshape((1, 1, b4_shape[1]))(b4)
-    b4 = Conv2D(256, (1, 1), padding='same',
-                kernel_regularizer=DECAY,
-                use_bias=False, name='image_pooling')(b4)
-    b4 = BatchNormalization(name='image_pooling_BN', epsilon=1e-5)(b4)
-    b4 = Activation(activation)(b4)
-    # upsample. have to use compat because of the option align_corners
-    size_before = tf.keras.backend.int_shape(x)
-    b4 = tf.keras.layers.experimental.preprocessing.Resizing(
-            *size_before[1:3], interpolation="bilinear"
-        )(b4)
-
-    # b4 = UpSampling2D(size=(32, 64), interpolation="bilinear")(b4)
-    # simple 1x1
-    b0 = Conv2D(256, (1, 1), padding='same',
-                kernel_regularizer=DECAY,
-                use_bias=False, name='aspp0')(x)
-    # b0 = BatchNormalization(name='aspp0_BN', epsilon=1e-5)(b0)
-    b0 = BN(name='aspp0_BN', epsilon=1e-5)(b0)
-    b0 = Activation(activation, name='aspp0_activation')(b0)
-
-    b1 = SepConv_BN(x, 256, 'aspp1',
-                    rate=atrous_rates[0], depth_activation=True, epsilon=1e-5)
-    # rate = 12 (24)
-    b2 = SepConv_BN(x, 256, 'aspp2',
-                    rate=atrous_rates[1], depth_activation=True, epsilon=1e-5)
-    # rate = 18 (36)
-    b3 = SepConv_BN(x, 256, 'aspp3',
-                    rate=atrous_rates[2], depth_activation=True, epsilon=1e-5)
-
-    # concatenate ASPP branches & project
-    x = Concatenate()([b4, b0, b1, b2, b3])
-
-    x = Conv2D(256, (1, 1), padding='same',
-               kernel_regularizer=DECAY,
-               use_bias=False, name='concat_projection')(x)
-    # x = BatchNormalization(name='concat_projection_BN', epsilon=1e-5)(x)
-    x = BN(name='concat_projection_BN', epsilon=1e-5)(x)
-    x = Activation(activation)(x)
-
-    x = Dropout(0.5)(x)
-
-    # -- end ASPP branch -- #
 
     ### Decoder C4 branch ###
-    size_before = tf.keras.backend.int_shape(c4)
-    x = tf.keras.layers.experimental.preprocessing.Resizing(
-            *size_before[1:3], interpolation="bilinear"
-        )(x)
-
-    c4 = Conv1x1(c4, 160)
+    x = Upsampling(x, channel=1024)
+    c4 = Conv1x1(c4, channel=512)
     x = Concatenate()([x, c4])
-    x = SepConv_BN(x, 256, 'decoder_c4',
-                   depth_activation=True, epsilon=1e-5)
+    x = Conv1x1(x, 1024)
+    x = Conv3x3(x, 1024, rate=1)
+
+
 
     ### Decoder C3 branch ###
-    size_before = tf.keras.backend.int_shape(c3)
-    x = tf.keras.layers.experimental.preprocessing.Resizing(
-            *size_before[1:3], interpolation="bilinear"
-        )(x)
-
-    c3 = Conv1x1(c3, 64)
+    x = Upsampling(x, channel=512)
+    c3 = Conv1x1(c3, channel=256)
     x = Concatenate()([x, c3])
-    x = SepConv_BN(x, 256, 'decoder_c3',
-                   depth_activation=True, epsilon=1e-5)
-
+    x = Conv1x1(x, 512)
+    x = Conv3x3(x, 512, rate=1)
 
     ### Decoder C2 branch ###
-    size_before = tf.keras.backend.int_shape(c2)
-    x = tf.keras.layers.experimental.preprocessing.Resizing(
-            *size_before[1:3], interpolation="bilinear"
-        )(x)
-
-    c2 = Conv1x1(c2, 48)
+    x = Upsampling(x, channel=256)
+    c2 = Conv1x1(c2, channel=128)
     x = Concatenate()([x, c2])
-    x = SepConv_BN(x, 256, 'decoder_c2',
-                   depth_activation=True, epsilon=1e-5)
+    x = Conv1x1(x, 256)
+    x = Conv3x3(x, 256, rate=1)
 
     ### Decoder C1 branch ###
-    size_before = tf.keras.backend.int_shape(c1)
-    x = tf.keras.layers.experimental.preprocessing.Resizing(
-            *size_before[1:3], interpolation="bilinear"
-        )(x)
-
-    c1 = Conv1x1(c1, 24)
+    x = Upsampling(x, channel=128)
+    c1 = Conv1x1(c1, channel=64)
     x = Concatenate()([x, c1])
-    x = SepConv_BN(x, 256, 'decoder_c1',
-                   depth_activation=True, epsilon=1e-5)
+    x = Conv1x1(x, 128)
+    x = Conv3x3(x, 128, rate=1)
 
-    x = SepConv_BN(x, 256, 'decoder_final',
-                   depth_activation=True, epsilon=1e-5)
+    ### Decoder output branch ###
+    x = Upsampling(x, channel=64)
+    x = Conv3x3(x, 64, rate=1)
 
-    x = classifier(x, num_classes=classes, upper=2, name='output')
-    " fuck git"
-    return model_input, x
+    ### Classifier ###
+    model_output = classifier(x, 2)
+
+    # model_output = green
+    return model_input, model_output
 
 
-def classifier(x, num_classes=19, upper=4, name=None):
+def classifier(x, num_classes=2, upper=2, name=None):
     x = layers.Conv2D(num_classes, 1, strides=1,
                       kernel_regularizer=DECAY,
-                      kernel_initializer=CONV_KERNEL_INITIALIZER)(x)
-    x = layers.UpSampling2D(size=(upper, upper), interpolation='bilinear', name=name)(x)
+                      kernel_initializer=CONV_KERNEL_INITIALIZER, name=name)(x)
+
     return x
 
 
@@ -148,14 +106,46 @@ def edge_classifier(x, upper=4, name=None):
 def Conv1x1(x, channel, epsilon=1e-5):
     x = Conv2D(channel, (1, 1), padding='same',
                        kernel_regularizer=DECAY,
+                        kernel_initializer=CONV_KERNEL_INITIALIZER,
                        use_bias=False)(x)
-    x = BN(epsilon=epsilon)(x)
+    x = BN(axis=-1, momentum=0.9, epsilon=epsilon)(x)
+    x = Activation(activation)(x)
+    return x
+
+def Conv3x3(x, channel, rate):
+    x = Conv2D(channel, (3, 3), padding='same', dilation_rate=(rate, rate),
+                       kernel_initializer=CONV_KERNEL_INITIALIZER,
+                        kernel_regularizer=DECAY,
+                       use_bias=False)(x)
+    x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
     x = Activation(activation)(x)
 
     return x
 
+
+def Upsampling(x, channel):
+    # x = Conv2DTranspose(channel, (3, 3), padding='same', strides=(2, 2),
+    #                    kernel_initializer=CONV_KERNEL_INITIALIZER,
+    #                     kernel_regularizer=DECAY,
+    #                    use_bias=False)(x)
+    # x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
+    # x = Activation(activation)(x)
+
+    x = Conv2D(channel, (1, 1), padding='same',
+                       kernel_regularizer=DECAY,
+                        kernel_initializer=CONV_KERNEL_INITIALIZER,
+                       use_bias=False)(x)
+    x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
+    x = Activation(activation)(x)
+
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
+
+    return x
+
+
+
 def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3):
-    activation = 'swish'
+    activation = "relu"
     if stride == 1:
         depth_padding = 'same'
     else:

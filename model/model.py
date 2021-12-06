@@ -125,7 +125,7 @@ def colorization_model(input_shape=(224, 168, 1), classes=2):
                    depth_activation=True, epsilon=1e-5)
 
     x = classifier(x, num_classes=classes, upper=2, name='output')
-
+    " fuck git"
     return model_input, x
 
 

@@ -4,6 +4,10 @@ __pycache__/
 *$py.class
 datasets/
 checkpoints/results/
+tensorboard/
+results/
+demo_outputs
+demo_images
 # C extensions
 *.so
 

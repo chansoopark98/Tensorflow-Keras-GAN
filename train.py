@@ -6,13 +6,12 @@ import argparse
 import time
 import os
 import tensorflow as tf
-import tensorflow_addons as tfa
 # LD_PRELOAD="/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4" python train.py
 
 tf.keras.backend.clear_session()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=128)
+parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=16)
 parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=100)
 parser.add_argument("--lr",             type=float, help="Learning rate 설정", default=0.001)
 parser.add_argument("--weight_decay",   type=float, help="Weight Decay 설정", default=0.0005)
@@ -37,10 +36,8 @@ SAVE_MODEL_NAME = args.model_name
 DATASET_DIR = args.dataset_dir
 CHECKPOINT_DIR = args.checkpoint_dir
 TENSORBOARD_DIR = args.tensorboard_dir
-# IMAGE_SIZE = (224, 224)
-IMAGE_SIZE = (224, 168)
+IMAGE_SIZE = (512, 512)
 num_classes = 2
-# IMAGE_SIZE = (None, None)
 USE_WEIGHT_DECAY = args.use_weightDecay
 LOAD_WEIGHT = args.load_weight
 MIXED_PRECISION = args.mixed_precision
@@ -62,7 +59,7 @@ train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
 # train_data = mirrored_strategy.experimental_distribute_dataset(train_data)
 valid_data = valid_dataset_config.get_validData(valid_dataset_config.valid_data)
 # valid_data = mirrored_strategy.experimental_distribute_dataset(valid_data)
-#
+
 steps_per_epoch = train_dataset_config.number_train // BATCH_SIZE
 
 validation_steps = valid_dataset_config.number_valid // BATCH_SIZE
@@ -73,10 +70,7 @@ reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.9, patience=3, min_lr
 
 checkpoint_val_loss = ModelCheckpoint(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_best_loss.h5',
                                       monitor='val_loss', save_best_only=True, save_weights_only=True, verbose=1)
-# checkpoint_val_miou = ModelCheckpoint(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_best_miou.h5',
-#                                       monitor='output_two_class_m_io_u', save_best_only=True, save_weights_only=True,
-#                                       monitor='val_output_m_io_u', save_best_only=True, save_weights_only=True,
-                                      # verbose=1, mode='max')
+
 
 tensorboard = tf.keras.callbacks.TensorBoard(log_dir=TENSORBOARD_DIR, write_graph=True, write_images=True)
 
@@ -104,7 +98,6 @@ if MIXED_PRECISION:
 callback = [tensorboard,  lr_scheduler, checkpoint_val_loss]
 
 
-
 if DISTRIBUTION_MODE:
     mirrored_strategy = tf.distribute.MirroredStrategy()
     with mirrored_strategy.scope():
@@ -115,7 +108,6 @@ if DISTRIBUTION_MODE:
         model.compile(
             optimizer=optimizer,
             loss='mse')
-
 
         if LOAD_WEIGHT:
             weight_name = '_1002_best_miou'

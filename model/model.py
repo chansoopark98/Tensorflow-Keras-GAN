@@ -14,57 +14,61 @@ DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
 # DECAY = None
 BN = tf.keras.layers.experimental.SyncBatchNormalization
 # BN = BatchNormalization
-# CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=1.0, mode="fan_out", distribution="truncated_normal")
-CONV_KERNEL_INITIALIZER = "he_normal"
-activation = 'relu'
+CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=2.0, mode="fan_out", distribution="truncated_normal")
+# CONV_KERNEL_INITIALIZER = "he_normal"
+activation = 'swish'
 
 def colorization_model(input_shape=(512, 512, 1), classes=2):
-    base = resnest.resnest101(input_shape=input_shape, include_top=False, weights="imagenet", input_tensor=None,
-                               classes=1000)
+
     # base.summary()
 
     """ EfficientNetV2S """
-    # base = EfficientNetV2S(input_shape=input_shape, pretrained="imagenet")
-    # c1 = base.get_layer('add_1').output  # 112x84 @24
-    # c2 = base.get_layer('add_4').output  # 56x42 @48
-    # c3 = base.get_layer('add_7').output  # 28x21 @64
-    # c4 = base.get_layer('add_20').output  # 14x11 @160
-    # x = base.get_layer('add_34').output  # 7x6 @256
+    base = EfficientNetV2S(input_shape=input_shape, pretrained=None)
+    c1 = base.get_layer('add_1').output  # 1/2 @24
+    c2 = base.get_layer('add_4').output  # 1/4 @48
+    c3 = base.get_layer('add_7').output  # 1/8 @64
+    c4 = base.get_layer('add_20').output  # 1/16 @160
+    x = base.get_layer('add_34').output  # 1/32 @256
 
 
     """ ResNest-101"""
-    c1 = base.get_layer('stem_act3').output  # 1/2 @ 128
-
-    c2 = base.get_layer('stage1_block3_shorcut_act').output  # 1/4 @ 256
-
-    c3 = base.get_layer('stage2_block4_shorcut_act').output  # 1/8 @ 512
-
-    c4 = base.get_layer('stage3_block23_shorcut_act').output  # 1/16 @ 1024
-
-    x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048
+    # base = resnest.resnest101(input_shape=input_shape, include_top=False, weights="imagenet", input_tensor=None,
+    #                            classes=1000)
+    # c1 = base.get_layer('stem_act3').output  # 1/2 @ 128
+    #
+    # c2 = base.get_layer('stage1_block3_shorcut_act').output  # 1/4 @ 256
+    #
+    # c3 = base.get_layer('stage2_block4_shorcut_act').output  # 1/8 @ 512
+    #
+    # c4 = base.get_layer('stage3_block23_shorcut_act').output  # 1/16 @ 1024
+    #
+    # x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048
 
     model_input = base.input
 
+    ### Conv high-level feature
+    x = Conv3x3(x, 256, rate=1)
+
 
     ### Decoder C4 branch ###
-    x = Upsampling(x, channel=1024)
-    x = Concatenate()([x, c4])
-    x = Conv3x3(x, 1024, rate=1)
+    x = Upsampling(x, channel=256)
+    x = Concatenate()([x, c4]) #160
+    x = Conv3x3(x, 256, rate=1)
 
     ### Decoder C3 branch ###
-    x = Upsampling(x, channel=512)
-    x = Concatenate()([x, c3])
-    x = Conv3x3(x, 512, rate=1)
+    x = Upsampling(x, channel=256)
+    x = Concatenate()([x, c3]) #64
+    x = Conv3x3(x, 256, rate=1)
 
     ### Decoder C2 branch ###
     x = Upsampling(x, channel=256)
-    x = Concatenate()([x, c2])
+    x = Concatenate()([x, c2]) #48
     x = Conv3x3(x, 256, rate=1)
 
     ### Decoder C1 branch ###
-    x = Upsampling(x, channel=128)
-    x = Concatenate()([x, c1])
-    x = Conv3x3(x, 128, rate=1)
+    x = Upsampling(x, channel=256)
+    x = Concatenate()([x, c1]) # 24
+    x = Conv3x3(x, 256, rate=1)
 
     ### Decoder output branch ###
     x = Upsampling(x, channel=64)
@@ -78,7 +82,7 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
 
 
 def classifier(x, num_classes=2, upper=2, name=None):
-    x = layers.Conv2D(num_classes, 3, strides=1, activation='tanh',
+    x = layers.Conv2D(num_classes, 3, strides=1, activation='tanh', padding='same',
                       kernel_initializer=CONV_KERNEL_INITIALIZER, name=name)(x)
 
     return x
@@ -120,16 +124,14 @@ def Upsampling(x, channel):
     # x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
     # x = Activation(activation)(x)
 
+    # x = Conv2D(channel, (3, 3), padding='same',
+    #                    kernel_regularizer=DECAY,
+    #                     kernel_initializer=CONV_KERNEL_INITIALIZER,
+    #                    use_bias=False)(x)
+    # x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
+    # x = Activation(activation)(x)
+
     x = UpSampling2D((2, 2), interpolation='bilinear')(x)
-
-    x = Conv2D(channel, (1, 1), padding='same',
-                       kernel_regularizer=DECAY,
-                        kernel_initializer=CONV_KERNEL_INITIALIZER,
-                       use_bias=False)(x)
-    x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
-    x = Activation(activation)(x)
-
-
 
     return x
 

@@ -20,13 +20,34 @@ if __name__ == "__main__":
 
 
 
-    for l, ab in train_data.take(100):
+    for data in train_data.take(100):
 
 
-        L = l[0]
-        a = ab[0][:, :, 0]
-        b = ab[0][:, :, 1]
+        """
+        ### data norm
+            normalized_input = (img - np.amin(img)) / (np.amax(img) - np.amin(img))
+            return 2*normalized_input - 1
+        """
+        img = data[0].numpy()
 
+        # Generate L,a,b channels image From input RGB data.
+        img /= 255. # input is Float type
+
+        img_lab = tfio.experimental.color.rgb_to_lab(img)
+        L = img_lab[:, :, 0]
+        L = (L / 50.) - 1.
+
+        a = img_lab[:, :, 1]
+        a = ((a+127.)/255.) * 2 - 1.
+
+        b = img_lab[:, :, 2]
+        b = ((b + 127.) / 255.) * 2 - 1.
+
+        L = tf.expand_dims(L, -1)
+        a = tf.expand_dims(a, -1)
+        b = tf.expand_dims(b, -1)
+        #
+        ab_channel = tf.concat([a, b], axis=-1)
 
         rows = 1
         cols = 3

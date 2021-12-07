@@ -41,7 +41,7 @@ CHECKPOINT_DIR = args.checkpoint_dir
 TENSORBOARD_DIR = args.tensorboard_dir
 MODEL_NAME = args.backbone_model
 TRAIN_MODE = args.train_dataset
-IMAGE_SIZE = (224, 168)
+IMAGE_SIZE = (512, 512)
 num_classes = 2
 USE_WEIGHT_DECAY = args.use_weightDecay
 LOAD_WEIGHT = args.load_weight
@@ -56,13 +56,13 @@ os.makedirs(DATASET_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # if use celebA dataset evaluation
-dataset = Dataset(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE, mode='validation')
+dataset = Dataset(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE, mode='validation', dataset='CustomCelebahq')
 test_steps = dataset.number_valid // BATCH_SIZE
 test_set = dataset.get_testData(dataset.valid_data)
 
 model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 
-weight_name = '_1202_best_loss'
+weight_name = '_1207_best_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
 
@@ -72,54 +72,70 @@ batch_index = 1
 save_path = './checkpoints/results/'+SAVE_MODEL_NAME+'/'
 os.makedirs(save_path, exist_ok=True)
 
-def demo_prepare(path):
-    img = tf.io.read_file(path)
-    img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.resize(img, IMAGE_SIZE, method=tf.image.ResizeMethod.BILINEAR)
-    img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='tf')
-
-    r = img[:, :, 0]
-    r = tf.expand_dims(r, -1)
-
-    return (r, img)
-
 for r, img in tqdm(test_set, total=test_steps):
     pred = model.predict_on_batch(r)
+    prediction = pred[0]
+    L = r[0][:, :, 0]
+    L += 1
+    L *= 50.
 
-    output = tf.concat([r[0], pred[0]], axis=-1)
-    orininal = tf.concat([r[0], img[0]], axis=-1)
+    a = prediction[:, :, 0]
+    a = (a+1) /2
+    a *= 255.
+    a -= 127.
 
-    # pred = pred[0]
-    output += 1.
-    output *= 127.5
-    output = tf.cast(output, tf.uint8)
+    b = prediction[:, :, 1]
+    b = (b+1) /2
+    b *= 255.
+    b -= 127.
 
-    orininal += 1.
-    orininal *= 127.5
-    orininal = tf.cast(orininal, tf.uint8)
+    L = tf.cast(L, tf.float32)
+    a = tf.cast(a, tf.float32)
+    b = tf.cast(b, tf.float32)
+
+    L = tf.expand_dims(L, -1)
+    a = tf.expand_dims(a, -1)
+    b = tf.expand_dims(b, -1)
+
+    output = tf.concat([L, a, b], axis=-1)
+    output = tfio.experimental.color.lab_to_rgb(output)
+
+    gt = img[0]
+    gt_a = gt[:, :, 0]
+    gt_a = (gt_a +1)/2
+    gt_a *= 255.
+    gt_a -= 127.
+
+    gt_b = gt[:, :, 1]
+    gt_b = (gt_b + 1) / 2
+    gt_b *= 255.
+    gt_b -= 127.
+
+
+    gt_a = tf.cast(gt_a, tf.float32)
+    gt_b = tf.cast(gt_b, tf.float32)
+
+    gt_a = tf.expand_dims(gt_a, -1)
+    gt_b = tf.expand_dims(gt_b, -1)
+
+    orininal = tf.concat([L, gt_a, gt_b], axis=-1)
+    orininal = tfio.experimental.color.lab_to_rgb(orininal)
 
     fig = plt.figure()
 
-    ax0 = fig.add_subplot(1, 3, 1)
-    ax0.imshow(r[0])
-    ax0.set_title('R channel Input')
+    ax0 = fig.add_subplot(1, 2, 1)
+    ax0.imshow(output)
+    ax0.set_title('Predict')
     ax0.axis("off")
 
-    ax1 = fig.add_subplot(1, 3, 2)
-    ax1.imshow(output)
-    ax1.set_title('Colorization result')
+    ax1 = fig.add_subplot(1, 2, 2)
+    ax1.imshow(orininal)
+    ax1.set_title('Original')
     ax1.axis("off")
 
-    ax2 = fig.add_subplot(1, 3, 3)
-    ax2.imshow(orininal)
-    ax2.set_title('Orinigal Image')
-    ax2.axis("off")
-
-    # plt.show()
-    # plt.savefig('fig1.png', dpi=300)
     plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
     # pred = tf.cast(pred, tf.int32)
-
+    plt.show()
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', r[0])
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)

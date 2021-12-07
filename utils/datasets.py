@@ -44,25 +44,26 @@ class Dataset:
 
     def load_test(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
-        img /= 255.
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        img = tfio.experimental.color.rgb_to_lab(img)
+        # Generate L,a,b channels image From input RGB data.
+        img /= 255.  # input is Float type
 
-        L = img[:, :, 0]
-        L /= 100.
-        a = img[:, :, 1]
-        a /= 127.
-        b = img[:, :, 2]
-        b /= 127.
+        img_lab = tfio.experimental.color.rgb_to_lab(img)
+        L = img_lab[:, :, 0]
+        L = (L / 50.) - 1.
+
+        a = img_lab[:, :, 1]
+        a = ((a + 127.) / 255.) * 2 - 1.
+
+        b = img_lab[:, :, 2]
+        b = ((b + 127.) / 255.) * 2 - 1.
 
         L = tf.expand_dims(L, -1)
         a = tf.expand_dims(a, -1)
         b = tf.expand_dims(b, -1)
         #
         ab_channel = tf.concat([a, b], axis=-1)
-
-
 
         return (L, ab_channel)
 
@@ -71,17 +72,20 @@ class Dataset:
     @tf.function
     def preprocess(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
-        img /= 255.
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        img = tfio.experimental.color.rgb_to_lab(img)
+        # Generate L,a,b channels image From input RGB data.
+        img /= 255.  # input is Float type
 
-        L = img[:, :, 0]
-        L /= 100.
-        a = img[:, :, 1]
-        a /= 127.
-        b = img[:, :, 2]
-        b /= 127.
+        img_lab = tfio.experimental.color.rgb_to_lab(img)
+        L = img_lab[:, :, 0]
+        L = (L / 50.) - 1.
+
+        a = img_lab[:, :, 1]
+        a = ((a + 127.) / 255.) * 2 - 1.
+
+        b = img_lab[:, :, 2]
+        b = ((b + 127.) / 255.) * 2 - 1.
 
         L = tf.expand_dims(L, -1)
         a = tf.expand_dims(a, -1)
@@ -89,27 +93,31 @@ class Dataset:
         #
         ab_channel = tf.concat([a, b], axis=-1)
 
-        # data augmentation
-        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-            L = tf.image.flip_left_right(L)
-            ab_channel = tf.image.flip_left_right(ab_channel)
+
+        # # data augmentation
+        # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+        #     L = tf.image.flip_left_right(L)
+        #     ab_channel = tf.image.flip_left_right(ab_channel)
 
         return (L, ab_channel)
 
     @tf.function
     def preprocess_valid(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
-        img /= 255.
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        img = tfio.experimental.color.rgb_to_lab(img)
+        # Generate L,a,b channels image From input RGB data.
+        img /= 255.  # input is Float type
 
-        L = img[:, :, 0]
-        L /= 100.
-        a = img[:, :, 1]
-        a /= 127.
-        b = img[:, :, 2]
-        b /= 127.
+        img_lab = tfio.experimental.color.rgb_to_lab(img)
+        L = img_lab[:, :, 0]
+        L = (L / 50.) - 1.
+
+        a = img_lab[:, :, 1]
+        a = ((a + 127.) / 255.) * 2 - 1.
+
+        b = img_lab[:, :, 2]
+        b = ((b + 127.) / 255.) * 2 - 1.
 
         L = tf.expand_dims(L, -1)
         a = tf.expand_dims(a, -1)
@@ -122,25 +130,10 @@ class Dataset:
     @tf.function
     def load_original_img(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
-        img /= 255.
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BICUBIC)
 
-        img = tfio.experimental.color.rgb_to_lab(img)
 
-        L = img[:, :, 0]
-        L /= 100.
-        a = img[:, :, 1]
-        a /= 127.
-        b = img[:, :, 2]
-        b /= 127.
-
-        L = tf.expand_dims(L, -1)
-        a = tf.expand_dims(a, -1)
-        b = tf.expand_dims(b, -1)
-        #
-        ab_channel = tf.concat([a, b], axis=-1)
-
-        return (L, ab_channel)
+        return (img)
 
     def get_trainData(self, train_data):
         train_data = train_data.shuffle(1600)

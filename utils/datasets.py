@@ -150,8 +150,39 @@ class Dataset:
         img = tf.cast(sample['image'], tf.float32)
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
-
         return (img)
+
+    @tf.function
+    def gan_preprocess(self, sample):
+        img = tf.cast(sample['image'], tf.float32)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+
+        # data augmentation
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            img = tf.image.flip_left_right(img)
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            img = self.zoom(img)
+
+        # Generate L,a,b channels image From input RGB data.
+        img /= 255.  # input is Float type
+
+        img_lab = tfio.experimental.color.rgb_to_lab(img)
+        L = img_lab[:, :, 0]
+        L = (L / 50.) - 1.
+
+        a = img_lab[:, :, 1]
+        a = ((a + 127.) / 255.) * 2 - 1.
+
+        b = img_lab[:, :, 2]
+        b = ((b + 127.) / 255.) * 2 - 1.
+
+        L = tf.expand_dims(L, -1)
+        a = tf.expand_dims(a, -1)
+        b = tf.expand_dims(b, -1)
+
+        ab = tf.concat([a, b], axis=-1)
+        return (L, ab)
+
 
     def get_trainData(self, train_data):
         train_data = train_data.shuffle(1600)
@@ -171,6 +202,22 @@ class Dataset:
         valid_data = valid_data.map(self.load_test)
         valid_data = valid_data.batch(self.batch_size).prefetch(AUTO)
         return valid_data
+
+    # FOR gan
+    def gan_trainData(self, train_data):
+        train_data = train_data.shuffle(1024)
+        # train_data = train_data.map(self.gan_preprocess, num_parallel_calls=AUTO)
+        train_data = train_data.padded_batch(self.batch_size)
+        train_data = train_data.prefetch(AUTO)
+        train_data = train_data.repeat()
+
+        return train_data
+
+    def gan_validData(self, valid_data):
+        valid_data = valid_data.map(self.preprocess_valid, num_parallel_calls=AUTO)
+        valid_data = valid_data.padded_batch(self.batch_size).prefetch(AUTO)
+        return valid_data
+
 
     def dataset_test(self, train_data):
         train_data = train_data.map(self.load_original_img)

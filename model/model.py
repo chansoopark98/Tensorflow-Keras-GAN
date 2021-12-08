@@ -96,7 +96,7 @@ def Conv1x1(x, channel, epsilon=1e-3):
     x = Activation(activation)(x)
     return x
 
-def Conv3x3(x, channel, rate):
+def Conv3x3(x, channel, rate, activation='swish'):
     x = Conv2D(channel, (3, 3), padding='same', dilation_rate=(rate, rate),
                        kernel_initializer=CONV_KERNEL_INITIALIZER,
                         kernel_regularizer=DECAY,

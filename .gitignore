@@ -8,6 +8,7 @@ tensorboard/
 results/
 demo_outputs/
 demo_images/
+GAN/images/
 # C extensions
 *.so
 

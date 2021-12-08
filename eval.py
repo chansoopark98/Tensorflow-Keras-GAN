@@ -62,7 +62,8 @@ test_set = dataset.get_testData(dataset.valid_data)
 
 model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 
-weight_name = '_1207_best_loss'
+# weight_name = '_1208_best_loss'
+weight_name = '_1208_final_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
 
@@ -97,8 +98,28 @@ for r, img in tqdm(test_set, total=test_steps):
     a = tf.expand_dims(a, -1)
     b = tf.expand_dims(b, -1)
 
+
     output = tf.concat([L, a, b], axis=-1)
     output = tfio.experimental.color.lab_to_rgb(output)
+    new_r = output[:, :, 0]
+
+    # new_r += (25./255.)
+
+    # new_r -= (25/255)
+    new_g = output[:, :, 1]
+    new_b = output[:, :, 2]
+    # new_b *= 255.
+    # new_b += 10.
+    # new_b /= 255.
+
+    new_r = tf.cast(new_r, tf.float32)
+    new_g = tf.cast(new_g, tf.float32)
+    new_b = tf.cast(new_b, tf.float32)
+
+    new_r = tf.expand_dims(new_r, -1)
+    new_g = tf.expand_dims(new_g, -1)
+    new_b = tf.expand_dims(new_b, -1)
+    new_output = tf.concat([new_r, new_g, new_b], axis=-1)
 
     gt = img[0]
     gt_a = gt[:, :, 0]
@@ -124,7 +145,7 @@ for r, img in tqdm(test_set, total=test_steps):
     fig = plt.figure()
 
     ax0 = fig.add_subplot(1, 2, 1)
-    ax0.imshow(output)
+    ax0.imshow(new_output)
     ax0.set_title('Predict')
     ax0.axis("off")
 

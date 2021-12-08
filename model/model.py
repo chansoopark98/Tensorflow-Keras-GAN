@@ -1,11 +1,10 @@
 from model.EfficientNetV2 import EfficientNetV2S
-from model.ResNest import resnest
+# from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
-    UpSampling2D, Activation, BatchNormalization, Conv2DTranspose,
-    GlobalAveragePooling2D, Conv2D, Dropout, Concatenate,
-    DepthwiseConv2D, Reshape, ZeroPadding2D)
-
+    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate,
+    DepthwiseConv2D,  ZeroPadding2D)
+from tensorflow.keras.activations import tanh
 import tensorflow as tf
 
 MOMENTUM = 0.9
@@ -35,13 +34,9 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
     # base = resnest.resnest101(input_shape=input_shape, include_top=False, weights="imagenet", input_tensor=None,
     #                            classes=1000)
     # c1 = base.get_layer('stem_act3').output  # 1/2 @ 128
-    #
     # c2 = base.get_layer('stage1_block3_shorcut_act').output  # 1/4 @ 256
-    #
     # c3 = base.get_layer('stage2_block4_shorcut_act').output  # 1/8 @ 512
-    #
     # c4 = base.get_layer('stage3_block23_shorcut_act').output  # 1/16 @ 1024
-    #
     # x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048
 
     model_input = base.input
@@ -53,50 +48,46 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
     ### Decoder C4 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c4]) #160
-    x = Conv3x3(x, 256, rate=1)
+    x = Conv1x1(x, channel=256)
+    x = SepConv_BN(x, filters=256, prefix="decoder_c4", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Decoder C3 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c3]) #64
-    x = Conv3x3(x, 256, rate=1)
+    x = Conv1x1(x, channel=256)
+    x = SepConv_BN(x, filters=256, prefix="decoder_c3", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Decoder C2 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c2]) #48
-    x = Conv3x3(x, 256, rate=1)
+    x = Conv1x1(x, channel=256)
+    x = SepConv_BN(x, filters=256, prefix="decoder_c2", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Decoder C1 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c1]) # 24
-    x = Conv3x3(x, 256, rate=1)
-
-    ### Decoder output branch ###
-    x = Upsampling(x, channel=64)
-    x = Conv3x3(x, 64, rate=1)
+    x = Conv1x1(x, channel=256)
+    x = SepConv_BN(x, filters=256, prefix="decoder_c1", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Classifier ###
-    model_output = classifier(x, 2)
+    x = classifier(x, 2)
+
+    ### Decoder output branch ###
+    model_output = Upsampling(x, channel=2)
 
     # model_output = green
     return model_input, model_output
 
 
 def classifier(x, num_classes=2, upper=2, name=None):
-    x = layers.Conv2D(num_classes, 3, strides=1, activation='tanh', padding='same',
-                      kernel_initializer=CONV_KERNEL_INITIALIZER, name=name)(x)
-
+    x = layers.Conv2D(num_classes, 3, strides=1, padding='same',
+                      kernel_initializer=CONV_KERNEL_INITIALIZER, name="classifier")(x)
+    x = tanh(x)
     return x
 
 
-def edge_classifier(x, upper=4, name=None):
-    x = layers.Conv2D(1, 1, strides=1,
-                      kernel_regularizer=DECAY,
-                      kernel_initializer=CONV_KERNEL_INITIALIZER)(x)
-    x = Activation('sigmoid')(x)
-    x = layers.UpSampling2D(size=(upper, upper), interpolation='bilinear', name=name)(x)
-    return x
 
-def Conv1x1(x, channel, epsilon=1e-5):
+def Conv1x1(x, channel, epsilon=1e-3):
     x = Conv2D(channel, (1, 1), padding='same',
                        kernel_regularizer=DECAY,
                         kernel_initializer=CONV_KERNEL_INITIALIZER,
@@ -117,28 +108,12 @@ def Conv3x3(x, channel, rate):
 
 
 def Upsampling(x, channel):
-    # x = Conv2DTranspose(channel, (3, 3), padding='same', strides=(2, 2),
-    #                    kernel_initializer=CONV_KERNEL_INITIALIZER,
-    #                     kernel_regularizer=DECAY,
-    #                    use_bias=False)(x)
-    # x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
-    # x = Activation(activation)(x)
-
-    # x = Conv2D(channel, (3, 3), padding='same',
-    #                    kernel_regularizer=DECAY,
-    #                     kernel_initializer=CONV_KERNEL_INITIALIZER,
-    #                    use_bias=False)(x)
-    # x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
-    # x = Activation(activation)(x)
-
     x = UpSampling2D((2, 2), interpolation='bilinear')(x)
-
     return x
 
 
 
 def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3):
-    activation = "relu"
     if stride == 1:
         depth_padding = 'same'
     else:

@@ -41,7 +41,7 @@ CHECKPOINT_DIR = args.checkpoint_dir
 TENSORBOARD_DIR = args.tensorboard_dir
 MODEL_NAME = args.backbone_model
 TRAIN_MODE = args.train_dataset
-IMAGE_SIZE = (224, 168)
+IMAGE_SIZE = (512, 512)
 num_classes = 2
 USE_WEIGHT_DECAY = args.use_weightDecay
 LOAD_WEIGHT = args.load_weight
@@ -62,7 +62,8 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 
-weight_name = '_1202_best_loss'
+# weight_name = '_1208_best_loss'
+weight_name = '_1208_final_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
 
@@ -74,23 +75,21 @@ os.makedirs(save_path, exist_ok=True)
 
 def demo_prepare(path):
     img = tf.io.read_file(path)
-    img = tf.image.decode_jpeg(img, channels=3)
-    img = tf.image.resize_with_pad(img, 224, 168)
-    # img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
-    img = tf.cast(img, tf.float32)
-    img = tf.keras.applications.imagenet_utils.preprocess_input(img, mode='tf')
+    img = tf.image.decode_image(img, channels=3)
+    img = tf.image.resize_with_pad(img, 512, 512)
+    # img = tf.image.resize(img, (512, 512))
 
-    r = img[:, :, 0]
-    g = img[:, :, 1]
-    b = img[:, :, 2]
+    grayscale = tfio.experimental.color.rgb_to_grayscale(img)
+    gray_concat = tf.concat([grayscale, grayscale, grayscale], axis=-1)
+    gray_concat /= 255.
 
-    r = tf.expand_dims(r, -1)
-    g = tf.expand_dims(g, -1)
-    b = tf.expand_dims(b, -1)
 
-    gt = tf.concat([g, b], axis=-1)
+    gray_concat = tfio.experimental.color.rgb_to_lab(gray_concat)
+    L = gray_concat[:, :, 0]
+    L = (L / 50.) - 1.
 
-    return (r, gt)
+
+    return (L)
 
 filenames = os.listdir('./demo_images')
 filenames.sort()
@@ -99,44 +98,56 @@ demo_test = demo_imgs.map(demo_prepare)
 demo_test = demo_test.batch(BATCH_SIZE)
 demo_steps = len(filenames) // BATCH_SIZE
 
-for r, img in tqdm(demo_test, total=demo_steps):
+for r in tqdm(demo_test, total=demo_steps):
 
     pred = model.predict_on_batch(r)
+    L_channel = r[0]
+    prediction = pred[0]
+    L = L_channel
+    L += 1
+    L *= 50.
 
-    output = tf.concat([r[0], pred[0]], axis=-1)
-    orininal = tf.concat([r[0], img[0]], axis=-1)
+    a = prediction[:, :, 0]
+    a = (a+1) /2.
+    a *= 255.
+    a -= 127.
 
-    # pred = pred[0]
-    output += 1.
-    output *= 127.5
-    output = tf.cast(output, tf.uint8)
+    b = prediction[:, :, 1]
+    b = (b+1) /2.
+    b *= 255.
+    b -= 127.
 
-    orininal += 1.
-    orininal *= 127.5
-    orininal = tf.cast(orininal, tf.uint8)
+    L = tf.cast(L, tf.float32)
+    a = tf.cast(a, tf.float32)
+    b = tf.cast(b, tf.float32)
 
-    fig = plt.figure()
+    L = tf.expand_dims(L, -1)
+    a = tf.expand_dims(a, -1)
+    b = tf.expand_dims(b, -1)
 
-    ax0 = fig.add_subplot(1, 3, 1)
-    ax0.imshow(r[0])
-    ax0.set_title('R channel Input')
-    ax0.axis("off")
+    output = tf.concat([L, a, b], axis=-1)
+    output = tfio.experimental.color.lab_to_rgb(output)
+    new_r = output[:, :, 0]
+    # new_r *= 255.
+    # new_r -= 25.
+    # new_r /= 255.
 
-    ax1 = fig.add_subplot(1, 3, 2)
-    ax1.imshow(output)
-    ax1.set_title('Colorization result')
-    ax1.axis("off")
+    new_g = output[:, :, 1]
+    new_b = output[:, :, 2]
+    # new_b *= 255.
+    # new_b += 10.
+    # new_b /= 255.
 
-    ax2 = fig.add_subplot(1, 3, 3)
-    ax2.imshow(orininal)
-    ax2.set_title('Orinigal Image')
-    ax2.axis("off")
+    new_r = tf.expand_dims(new_r, -1)
+    new_g = tf.expand_dims(new_g, -1)
+    new_b = tf.expand_dims(new_b, -1)
+    new_output = tf.concat([new_r, new_g, new_b], axis=-1)
 
+    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '.png', output)
+    batch_index+=1
+    # plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+    # pred = tf.cast(pred, tf.int32)
+    # plt.imshow
     # plt.show()
-    # plt.savefig('fig1.png', dpi=300)
-    plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
-
-    batch_index += 1
-
 
 

@@ -41,17 +41,33 @@ class Dataset:
 
         return train_data, number_train
 
+    @tf.function
+    def zoom(self, x, scale_min=0.7, scale_max=1.1):
+        h, w, _ = x.shape
+        scale = tf.random.uniform([], scale_min, scale_max)
+        nh = h * scale
+        nw = w * scale
+        x = tf.image.resize(x, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
+        x = tf.image.resize_with_crop_or_pad(x, h, w)
+        return x
 
     def load_test(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+
+        grayscale = tfio.experimental.color.rgb_to_grayscale(img)
+        gray_concat = tf.concat([grayscale, grayscale, grayscale], axis=-1)
+        gray_concat /= 255.
+        gray_concat = tfio.experimental.color.rgb_to_lab(gray_concat)
+        L = gray_concat[:, :, 0]
+        L = (L / 50.) - 1.
 
         # Generate L,a,b channels image From input RGB data.
         img /= 255.  # input is Float type
 
         img_lab = tfio.experimental.color.rgb_to_lab(img)
-        L = img_lab[:, :, 0]
-        L = (L / 50.) - 1.
+        # L = img_lab[:, :, 0]
+        # L = (L / 50.) - 1.
 
         a = img_lab[:, :, 1]
         a = ((a + 127.) / 255.) * 2 - 1.
@@ -72,7 +88,14 @@ class Dataset:
     @tf.function
     def preprocess(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+
+        # data augmentation
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            img = tf.image.flip_left_right(img)
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            img = self.zoom(img)
+
 
         # Generate L,a,b channels image From input RGB data.
         img /= 255.  # input is Float type
@@ -94,17 +117,12 @@ class Dataset:
         ab_channel = tf.concat([a, b], axis=-1)
 
 
-        # # data augmentation
-        # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-        #     L = tf.image.flip_left_right(L)
-        #     ab_channel = tf.image.flip_left_right(ab_channel)
-
         return (L, ab_channel)
 
     @tf.function
     def preprocess_valid(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
         # Generate L,a,b channels image From input RGB data.
         img /= 255.  # input is Float type
@@ -130,7 +148,7 @@ class Dataset:
     @tf.function
     def load_original_img(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BICUBIC)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
 
         return (img)

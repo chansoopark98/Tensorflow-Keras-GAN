@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from utils.datasets import Dataset
 import argparse
 import tensorflow_io as tfio
+from skimage.color import rgb2lab, rgb2gray
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", type=str, help="데이터셋 다운로드 디렉토리 설정", default='./datasets/')
@@ -31,17 +32,20 @@ if __name__ == "__main__":
         img = data[0].numpy()
 
         # Generate L,a,b channels image From input RGB data.
-        img /= 255. # input is Float type
+        # img /= 255. # input is Float type
 
-        img_lab = tfio.experimental.color.rgb_to_lab(img)
+        # img_lab = tfio.experimental.color.rgb_to_lab(img)
+        img_lab = rgb2lab(img)
+        # img_lab = (img_lab + 128) / 255
+
         L = img_lab[:, :, 0]
-        L = (L / 50.) - 1.
+        # L = (L / 50.) - 1.
 
         a = img_lab[:, :, 1]
-        a = ((a+127.)/255.) * 2 - 1.
+        # a = ((a+127.)/255.) * 2 - 1.
 
         b = img_lab[:, :, 2]
-        b = ((b + 127.) / 255.) * 2 - 1.
+        # b = ((b + 127.) / 255.) * 2 - 1.
 
         L = tf.expand_dims(L, -1)
         a = tf.expand_dims(a, -1)

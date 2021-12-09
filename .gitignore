@@ -9,6 +9,7 @@ results/
 demo_outputs/
 demo_images/
 GAN/images/
+.idea
 # C extensions
 *.so
 

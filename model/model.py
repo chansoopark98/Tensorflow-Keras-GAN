@@ -2,9 +2,9 @@ from model.EfficientNetV2 import EfficientNetV2S
 # from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
-    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate,
+    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU,
     DepthwiseConv2D,  ZeroPadding2D)
-from tensorflow.keras.activations import tanh
+from tensorflow.keras.activations import tanh, relu
 import tensorflow as tf
 
 MOMENTUM = 0.9
@@ -69,11 +69,13 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
     x = Conv1x1(x, channel=256)
     x = SepConv_BN(x, filters=256, prefix="decoder_c1", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
-    ### Classifier ###
-    x = classifier(x, 2)
 
     ### Decoder output branch ###
-    model_output = Upsampling(x, channel=2)
+    x = Upsampling(x, channel=2)
+
+    ### Classifier ###
+    model_output = classifier(x, 2)
+
 
     # model_output = green
     return model_input, model_output
@@ -82,7 +84,7 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
 def classifier(x, num_classes=2, upper=2, name=None):
     x = layers.Conv2D(num_classes, 3, strides=1, padding='same',
                       kernel_initializer=CONV_KERNEL_INITIALIZER, name="classifier")(x)
-    x = tanh(x)
+    x = relu(x)
     return x
 
 

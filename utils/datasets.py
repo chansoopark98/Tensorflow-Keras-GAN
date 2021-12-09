@@ -47,48 +47,37 @@ class Dataset:
         scale = tf.random.uniform([], scale_min, scale_max)
         nh = h * scale
         nw = w * scale
-        x = tf.image.resize(x, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
+        x = tf.image.resize(x, (nh, nw), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         x = tf.image.resize_with_crop_or_pad(x, h, w)
         return x
 
     def load_test(self, sample):
-        img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img = sample['image']
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        grayscale = tfio.experimental.color.rgb_to_grayscale(img)
-        gray_concat = tf.concat([grayscale, grayscale, grayscale], axis=-1)
-        gray_concat /= 255.
-        gray_concat = tfio.experimental.color.rgb_to_lab(gray_concat)
-        L = gray_concat[:, :, 0]
-        L = (L / 50.) - 1.
+        R = img[:, :, 0]
+        R = tf.cast(R, tf.float32)
+        R /= 255.
+        R = tf.expand_dims(R, axis=-1)
 
-        # Generate L,a,b channels image From input RGB data.
-        img /= 255.  # input is Float type
+        img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
+        img_YCbCr = tf.cast(img_YCbCr, tf.float32)
 
-        img_lab = tfio.experimental.color.rgb_to_lab(img)
-        # L = img_lab[:, :, 0]
-        # L = (L / 50.) - 1.
+        Cb = img_YCbCr[:, :, 1]
+        Cb /= 255.
+        Cb = tf.expand_dims(Cb, axis=-1)
+        Cr = img_YCbCr[:, :, 2]
+        Cr /= 255.
+        Cr = tf.expand_dims(Cr, axis=-1)
 
-        a = img_lab[:, :, 1]
-        a = ((a + 127.) / 255.) * 2 - 1.
+        CbCr = tf.concat([Cb, Cr], axis=-1)
 
-        b = img_lab[:, :, 2]
-        b = ((b + 127.) / 255.) * 2 - 1.
-
-        L = tf.expand_dims(L, -1)
-        a = tf.expand_dims(a, -1)
-        b = tf.expand_dims(b, -1)
-        #
-        ab_channel = tf.concat([a, b], axis=-1)
-
-        return (L, ab_channel)
-
-
+        return (R, CbCr)
 
     @tf.function
     def preprocess(self, sample):
-        img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img = sample['image']
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
         # data augmentation
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
@@ -96,58 +85,52 @@ class Dataset:
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
             img = self.zoom(img)
 
+        R = img[:, :, 0]
+        R = tf.cast(R, tf.float32)
+        R /= 255.
+        R = tf.expand_dims(R, axis=-1)
 
-        # Generate L,a,b channels image From input RGB data.
-        img /= 255.  # input is Float type
+        img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
+        img_YCbCr = tf.cast(img_YCbCr, tf.float32)
 
-        img_lab = tfio.experimental.color.rgb_to_lab(img)
-        L = img_lab[:, :, 0]
-        L = (L / 50.) - 1.
+        Cb = img_YCbCr[:, :, 1]
+        Cb /= 255.
+        Cb = tf.expand_dims(Cb, axis=-1)
+        Cr = img_YCbCr[:, :, 2]
+        Cr /= 255.
+        Cr = tf.expand_dims(Cr, axis=-1)
 
-        a = img_lab[:, :, 1]
-        a = ((a + 127.) / 255.) * 2 - 1.
+        CbCr = tf.concat([Cb, Cr], axis=-1)
 
-        b = img_lab[:, :, 2]
-        b = ((b + 127.) / 255.) * 2 - 1.
-
-        L = tf.expand_dims(L, -1)
-        a = tf.expand_dims(a, -1)
-        b = tf.expand_dims(b, -1)
-        #
-        ab_channel = tf.concat([a, b], axis=-1)
-
-
-        return (L, ab_channel)
+        return (R, CbCr)
 
     @tf.function
     def preprocess_valid(self, sample):
-        img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img = sample['image']
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        # Generate L,a,b channels image From input RGB data.
-        img /= 255.  # input is Float type
+        R = img[:, :, 0]
+        R = tf.cast(R, tf.float32)
+        R /= 255.
+        R = tf.expand_dims(R, axis=-1)
 
-        img_lab = tfio.experimental.color.rgb_to_lab(img)
-        L = img_lab[:, :, 0]
-        L = (L / 50.) - 1.
+        img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
+        img_YCbCr = tf.cast(img_YCbCr, tf.float32)
 
-        a = img_lab[:, :, 1]
-        a = ((a + 127.) / 255.) * 2 - 1.
+        Cb = img_YCbCr[:, :, 1]
+        Cb /= 255.
+        Cb = tf.expand_dims(Cb, axis=-1)
+        Cr = img_YCbCr[:, :, 2]
+        Cr /= 255.
+        Cr = tf.expand_dims(Cr, axis=-1)
 
-        b = img_lab[:, :, 2]
-        b = ((b + 127.) / 255.) * 2 - 1.
+        CbCr = tf.concat([Cb, Cr], axis=-1)
 
-        L = tf.expand_dims(L, -1)
-        a = tf.expand_dims(a, -1)
-        b = tf.expand_dims(b, -1)
-        #
-        ab_channel = tf.concat([a, b], axis=-1)
-
-        return (L, ab_channel)
+        return (R, CbCr)
 
     @tf.function
     def load_original_img(self, sample):
-        img = tf.cast(sample['image'], tf.float32)
+        img = sample['image']
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
         return (img)

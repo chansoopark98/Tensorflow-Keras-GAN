@@ -11,7 +11,7 @@ import tensorflow as tf
 tf.keras.backend.clear_session()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=32)
+parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=64)
 parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=50)
 parser.add_argument("--lr",             type=float, help="Learning rate 설정", default=0.001)
 parser.add_argument("--weight_decay",   type=float, help="Weight Decay 설정", default=0.0005)
@@ -102,12 +102,14 @@ if DISTRIBUTION_MODE:
     mirrored_strategy = tf.distribute.MirroredStrategy()
     with mirrored_strategy.scope():
         print("Number of devices: {}".format(mirrored_strategy.num_replicas_in_sync))
+        train_data = mirrored_strategy.experimental_distribute_dataset(train_data)
+        valid_data = mirrored_strategy.experimental_distribute_dataset(valid_data)
 
         model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
         model = tf.keras.Model(model_input, model_output)
         model.compile(
             optimizer=optimizer,
-            loss='mse')
+            loss='mae')
 
         if LOAD_WEIGHT:
             weight_name = '_1002_best_miou'

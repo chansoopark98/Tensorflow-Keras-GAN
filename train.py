@@ -104,7 +104,6 @@ if DISTRIBUTION_MODE:
         print("Number of devices: {}".format(mirrored_strategy.num_replicas_in_sync))
 
         model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
-
         model.compile(
             optimizer=optimizer,
             loss='mse')

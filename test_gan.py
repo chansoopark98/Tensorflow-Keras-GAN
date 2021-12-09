@@ -44,13 +44,13 @@ class GAN():
         #                                dataset='CustomCelebahq')
         # self.train_data = self.train_dataset_config.gan_trainData(self.train_dataset_config.train_data)
         self.train_data = tfds.load('CustomCelebahq',
-                               data_dir=DATASET_DIR, split='train[5%:]')
+                               data_dir=DATASET_DIR, split='train[:50%]')
         self.number_train = self.train_data.reduce(0, lambda x, _: x + 1).numpy()
         print("학습 데이터 개수", self.number_train)
         self.train_data = self.train_data.shuffle(1024)
-        self.train_data = self.train_data.padded_batch(BATCH_SIZE)
-        self.train_data = self.train_data.prefetch(tf.data.experimental.AUTOTUNE)
-        self.train_data = self.train_data.repeat()
+        self.train_data = self.train_data.batch(BATCH_SIZE)
+        # self.train_data = self.train_data.prefetch(tf.data.experimental.AUTOTUNE)
+        # self.train_data = self.train_data.repeat()
 
         # self.train_data = self.train_data.with_options(self.options)
         # self.train_data = mirrored_strategy.experimental_distribute_dataset(self.train_data)
@@ -114,16 +114,18 @@ class GAN():
 
     def train(self, epochs, batch_size=128, sample_interval=50):
 
-        # Adversarial ground truths
-        valid = np.ones((batch_size, 1))
-        fake = np.zeros((batch_size, 1))
 
         for epoch in range(epochs):
             for features in tqdm(self.train_data, total=self.steps_per_epoch):
+            # for features in self.train_data:
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
                 img = tf.cast(features['image'], tf.float32)
+                shape = img.shape
+                # Adversarial ground truths
+                valid = np.ones((shape[0], 1))
+                fake = np.zeros((shape[0], 1))
 
                 img = tf.image.resize(img, (512, 512), tf.image.ResizeMethod.BILINEAR)
                 # Generate L,a,b channels image From input RGB data.
@@ -165,33 +167,38 @@ class GAN():
                 # Plot the progress
                 # t.set_description("text", refresh=True)
 
-            print ("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (epoch, self.d_loss[0], 100*self.d_loss[1], self.g_loss))
+            print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (
+            epoch, self.d_loss[0], 100 * self.d_loss[1], self.g_loss))
+            # self.train_data = self.train_data.repeat()
 
-                # If at save interval => save generated image samples
-                # if epoch % sample_interval == 0:
-                #     self.sample_images(epoch)
+
+            # If at save interval => save generated image samples
+            if epoch % sample_interval == 0:
+                self.sample_images(epoch)
 
     def sample_images(self, epoch):
-        r, c = 5, 5
-        noise = np.random.normal(0, 1, (r * c, self.latent_dim))
-        gen_imgs = self.generator.predict(noise)
-
-        # Rescale images 0 - 1
-        gen_imgs = 0.5 * gen_imgs + 0.5
-
-        fig, axs = plt.subplots(r, c)
-        cnt = 0
-        for i in range(r):
-            for j in range(c):
-                axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
-                axs[i,j].axis('off')
-                cnt += 1
-        fig.savefig("images/%d.png" % epoch)
-        plt.close()
+        # r, c = 5, 5
+        # noise = np.random.normal(0, 1, (r * c, self.latent_dim))
+        # gen_imgs = self.generator.predict(noise)
+        #
+        # # Rescale images 0 - 1
+        # gen_imgs = 0.5 * gen_imgs + 0.5
+        #
+        # fig, axs = plt.subplots(r, c)
+        # cnt = 0
+        # for i in range(r):
+        #     for j in range(c):
+        #         axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
+        #         axs[i,j].axis('off')
+        #         cnt += 1
+        # fig.savefig("images/%d.png" % epoch)
+        # plt.close()
+        self.combined.save_weights('test_model.h5')
+        # self.combined.s
 
 
 if __name__ == '__main__':
     # mirrored_strategy = tf.distribute.MirroredStrategy()
     # with mirrored_strategy.scope():
     gan = GAN()
-    gan.train(epochs=EPOCHS, batch_size=BATCH_SIZE, sample_interval=200)
+    gan.train(epochs=EPOCHS, batch_size=BATCH_SIZE, sample_interval=1)

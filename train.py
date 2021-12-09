@@ -11,7 +11,7 @@ import tensorflow as tf
 tf.keras.backend.clear_session()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=64)
+parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=32)
 parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=50)
 parser.add_argument("--lr",             type=float, help="Learning rate 설정", default=0.001)
 parser.add_argument("--weight_decay",   type=float, help="Weight Decay 설정", default=0.0005)
@@ -68,15 +68,18 @@ print("검증 배치 개수:", validation_steps)
 
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.9, patience=3, min_lr=1e-5, verbose=1)
 
-checkpoint_val_loss = ModelCheckpoint(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_best_loss.h5',
+checkpoint_val_loss = ModelCheckpoint(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_best_val_loss.h5',
                                       monitor='val_loss', save_best_only=True, save_weights_only=True, verbose=1)
+
+checkpoint_loss = ModelCheckpoint(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_best_loss.h5',
+                                      monitor='loss', save_best_only=True, save_weights_only=True, verbose=1)
 
 
 tensorboard = tf.keras.callbacks.TensorBoard(log_dir=TENSORBOARD_DIR, write_graph=True, write_images=True)
 
 polyDecay = tf.keras.optimizers.schedules.PolynomialDecay(initial_learning_rate=base_lr,
                                                           decay_steps=EPOCHS,
-                                                          end_learning_rate=0.0001, power=0.9)
+                                                          end_learning_rate=base_lr*0.1, power=0.9)
 
 lr_scheduler = tf.keras.callbacks.LearningRateScheduler(polyDecay,verbose=1)
 
@@ -95,7 +98,7 @@ if MIXED_PRECISION:
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
 
-callback = [tensorboard,  lr_scheduler, checkpoint_val_loss]
+callback = [tensorboard,  lr_scheduler, checkpoint_val_loss, checkpoint_loss]
 
 
 if DISTRIBUTION_MODE:

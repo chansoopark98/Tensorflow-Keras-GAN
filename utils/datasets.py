@@ -168,7 +168,7 @@ class Dataset:
 
 
     def get_trainData(self, train_data):
-        train_data = train_data.shuffle(1600)
+        train_data = train_data.shuffle(1024)
         train_data = train_data.map(self.preprocess, num_parallel_calls=AUTO)
         train_data = train_data.padded_batch(self.batch_size)
         train_data = train_data.prefetch(AUTO)

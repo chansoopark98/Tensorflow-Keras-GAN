@@ -60,8 +60,9 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 # test_steps = dataset.number_valid // BATCH_SIZE
 # test_set = dataset.get_testData(dataset.valid_data)
 
-model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
-
+# model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
+model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
+model = tf.keras.Model(model_input, model_output)
 # weight_name = '_1208_best_loss'
 weight_name = '_1208_final_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)

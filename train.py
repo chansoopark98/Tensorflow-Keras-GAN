@@ -103,7 +103,8 @@ if DISTRIBUTION_MODE:
     with mirrored_strategy.scope():
         print("Number of devices: {}".format(mirrored_strategy.num_replicas_in_sync))
 
-        model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
+        model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
+        model = tf.keras.Model(model_input, model_output)
         model.compile(
             optimizer=optimizer,
             loss='mse')

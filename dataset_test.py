@@ -55,19 +55,22 @@ if __name__ == "__main__":
 
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-
+        img_grayscale = tfio.experimental.color.rgb_to_grayscale(img)
         Y = img_YCbCr[:, :, 0]
         Y = tf.expand_dims(Y, axis=-1)
-        lab = tfio.experimental.color.rgb_to_lab(img / 255)
-        L = lab[:, :, 0]
-        L = tf.expand_dims(L, axis=-1)
-        L = tf.cast(L, tf.uint8)
+
+        Gray = img_grayscale
+        Gray_3channel = tf.concat([Gray, Gray, Gray], axis=-1)
+        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
+        gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y = tf.expand_dims(gray_Y, axis=-1)
+
         Cb = img_YCbCr[:, :, 1]
         Cb = tf.expand_dims(Cb, axis=-1)
         Cr = img_YCbCr[:, :, 2]
         Cr = tf.expand_dims(Cr, axis=-1)
 
-        convert_YCbCR = tf.concat([L, Cb, Cr], axis=-1)
+        convert_YCbCR = tf.concat([gray_Y, Cb, Cr], axis=-1)
         convert_YCbCR = tf.cast(convert_YCbCR, tf.uint8)
         convert_RGB = tfio.experimental.color.ycbcr_to_rgb(convert_YCbCR)
         rows = 1

@@ -69,13 +69,11 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
     x = Conv1x1(x, channel=256)
     x = SepConv_BN(x, filters=256, prefix="decoder_c1", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
+    ### Classifier ###
+    x = classifier(x, 2)
 
     ### Decoder output branch ###
-    x = Upsampling(x, channel=2)
-
-    ### Classifier ###
-    model_output = classifier(x, 2)
-
+    model_output = Upsampling(x, channel=2)
 
     # model_output = green
     return model_input, model_output
@@ -110,7 +108,7 @@ def Conv3x3(x, channel, rate, activation='swish'):
 
 
 def Upsampling(x, channel):
-    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
+    x = UpSampling2D((2, 2), interpolation='nearest')(x)
     return x
 
 

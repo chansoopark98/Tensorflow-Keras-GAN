@@ -55,24 +55,27 @@ class Dataset:
         img = sample['image']
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        R = img[:, :, 0]
-        R = tf.cast(R, tf.float32)
-        R /= 255.
-        R = tf.expand_dims(R, axis=-1)
+        gray_img = tfio.experimental.color.rgb_to_grayscale(img)
+        Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
+        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
+        gray_ycbcr = tf.cast(gray_ycbcr, tf.float32)
+        gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y /= 255.
+        gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
         img_YCbCr = tf.cast(img_YCbCr, tf.float32)
-
         Cb = img_YCbCr[:, :, 1]
         Cb /= 255.
         Cb = tf.expand_dims(Cb, axis=-1)
+
         Cr = img_YCbCr[:, :, 2]
         Cr /= 255.
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
 
-        return (R, CbCr)
+        return (gray_Y, CbCr)
 
     @tf.function
     def preprocess(self, sample):
@@ -85,60 +88,67 @@ class Dataset:
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
             img = self.zoom(img)
 
-        R = img[:, :, 0]
-        R = tf.cast(R, tf.float32)
-        R /= 255.
-        R = tf.expand_dims(R, axis=-1)
+        gray_img = tfio.experimental.color.rgb_to_grayscale(img)
+        Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
+        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
+        gray_ycbcr = tf.cast(gray_ycbcr, tf.float32)
+        gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y /= 255.
+        gray_Y = tf.expand_dims(gray_Y, axis=-1)
+
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
         img_YCbCr = tf.cast(img_YCbCr, tf.float32)
-
         Cb = img_YCbCr[:, :, 1]
         Cb /= 255.
         Cb = tf.expand_dims(Cb, axis=-1)
+
         Cr = img_YCbCr[:, :, 2]
         Cr /= 255.
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
 
-        return (R, CbCr)
+        return (gray_Y, CbCr)
 
     @tf.function
     def preprocess_valid(self, sample):
         img = sample['image']
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        R = img[:, :, 0]
-        R = tf.cast(R, tf.float32)
-        R /= 255.
-        R = tf.expand_dims(R, axis=-1)
+        gray_img = tfio.experimental.color.rgb_to_grayscale(img)
+        Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
+        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
+        gray_ycbcr = tf.cast(gray_ycbcr, tf.float32)
+        gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y /= 255.
+        gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
         img_YCbCr = tf.cast(img_YCbCr, tf.float32)
-
         Cb = img_YCbCr[:, :, 1]
         Cb /= 255.
         Cb = tf.expand_dims(Cb, axis=-1)
+
         Cr = img_YCbCr[:, :, 2]
         Cr /= 255.
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
 
-        return (R, CbCr)
+        return (gray_Y, CbCr)
 
     @tf.function
     def load_original_img(self, sample):
         img = sample['image']
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
         return (img)
 
     @tf.function
     def gan_preprocess(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
         # data augmentation
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:

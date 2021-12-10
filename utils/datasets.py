@@ -58,28 +58,22 @@ class Dataset:
         gray_img = tfio.experimental.color.rgb_to_grayscale(img)
         Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
         gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_ycbcr = tf.cast(gray_ycbcr, tf.float32)
         gray_Y = gray_ycbcr[:, :, 0]
-        gray_Y /= 255.
-
+        gray_Y = (gray_Y / 127.5) - 1.0
         gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
+
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        img_YCbCr = tf.cast(img_YCbCr, tf.float32)
-
-        # gray_Y = img_YCbCr[:, :, 0]
-        # gray_Y /= 255.
-        # gray_Y = tf.expand_dims(gray_Y, axis=-1)
-
         Cb = img_YCbCr[:, :, 1]
-        Cb /= 255.
+        Cb = (Cb / 127.5) - 1.0
         Cb = tf.expand_dims(Cb, axis=-1)
 
         Cr = img_YCbCr[:, :, 2]
-        Cr /= 255.
+        Cr = (Cr / 127.5) - 1.0
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
+
 
         return (gray_Y, CbCr)
 
@@ -97,14 +91,12 @@ class Dataset:
         gray_img = tfio.experimental.color.rgb_to_grayscale(img)
         Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
         gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_ycbcr = tf.cast(gray_ycbcr, tf.float32)
         gray_Y = gray_ycbcr[:, :, 0]
         gray_Y = (gray_Y / 127.5) - 1.0
         gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        img_YCbCr = tf.cast(img_YCbCr, tf.float32)
         Cb = img_YCbCr[:, :, 1]
         Cb = (Cb / 127.5) - 1.0
         Cb = tf.expand_dims(Cb, axis=-1)
@@ -125,22 +117,22 @@ class Dataset:
         gray_img = tfio.experimental.color.rgb_to_grayscale(img)
         Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
         gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_ycbcr = tf.cast(gray_ycbcr, tf.float32)
         gray_Y = gray_ycbcr[:, :, 0]
-        gray_Y /= 255.
+        gray_Y = (gray_Y / 127.5) - 1.0
         gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
+
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        img_YCbCr = tf.cast(img_YCbCr, tf.float32)
         Cb = img_YCbCr[:, :, 1]
-        Cb /= 255.
+        Cb = (Cb / 127.5) - 1.0
         Cb = tf.expand_dims(Cb, axis=-1)
 
         Cr = img_YCbCr[:, :, 2]
-        Cr /= 255.
+        Cr = (Cr / 127.5) - 1.0
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
+
 
         return (gray_Y, CbCr)
 

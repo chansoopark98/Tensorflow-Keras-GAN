@@ -64,7 +64,9 @@ test_set = dataset.get_testData(dataset.valid_data)
 model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 model = tf.keras.Model(model_input, model_output)
 # weight_name = '_1208_best_loss'
-weight_name = '_1208_final_loss'
+
+# weight_name = '_1210_best_loss'
+weight_name = '_1210_best_val_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
 
@@ -74,79 +76,28 @@ batch_index = 1
 save_path = './checkpoints/results/'+SAVE_MODEL_NAME+'/'
 os.makedirs(save_path, exist_ok=True)
 
-for r, img in tqdm(test_set, total=test_steps):
+for r, input_cbcr in tqdm(test_set, total=test_steps):
     pred = model.predict_on_batch(r)
     prediction = pred[0]
-    L = r[0][:, :, 0]
-    L += 1
-    L *= 50.
+    input_y = r[0]
+    img = input_cbcr[0]
 
-    a = prediction[:, :, 0]
-    a = (a+1) /2
-    a *= 255.
-    a -= 127.
-
-    b = prediction[:, :, 1]
-    b = (b+1) /2
-    b *= 255.
-    b -= 127.
-
-    L = tf.cast(L, tf.float32)
-    a = tf.cast(a, tf.float32)
-    b = tf.cast(b, tf.float32)
-
-    L = tf.expand_dims(L, -1)
-    a = tf.expand_dims(a, -1)
-    b = tf.expand_dims(b, -1)
+    input_y *= 255.
+    prediction *= 255.
+    img *= 255.
 
 
-    output = tf.concat([L, a, b], axis=-1)
-    output = tfio.experimental.color.lab_to_rgb(output)
-    new_r = output[:, :, 0]
+    output = tf.concat([input_y, prediction], axis=-1)
+    output = tf.cast(output, tf.uint8)
+    output = tfio.experimental.color.ycbcr_to_rgb(output)
 
-    # new_r += (25./255.)
-
-    # new_r -= (25/255)
-    new_g = output[:, :, 1]
-    new_b = output[:, :, 2]
-    # new_b *= 255.
-    # new_b += 10.
-    # new_b /= 255.
-
-    new_r = tf.cast(new_r, tf.float32)
-    new_g = tf.cast(new_g, tf.float32)
-    new_b = tf.cast(new_b, tf.float32)
-
-    new_r = tf.expand_dims(new_r, -1)
-    new_g = tf.expand_dims(new_g, -1)
-    new_b = tf.expand_dims(new_b, -1)
-    new_output = tf.concat([new_r, new_g, new_b], axis=-1)
-
-    gt = img[0]
-    gt_a = gt[:, :, 0]
-    gt_a = (gt_a +1)/2
-    gt_a *= 255.
-    gt_a -= 127.
-
-    gt_b = gt[:, :, 1]
-    gt_b = (gt_b + 1) / 2
-    gt_b *= 255.
-    gt_b -= 127.
-
-
-    gt_a = tf.cast(gt_a, tf.float32)
-    gt_b = tf.cast(gt_b, tf.float32)
-
-    gt_a = tf.expand_dims(gt_a, -1)
-    gt_b = tf.expand_dims(gt_b, -1)
-
-    orininal = tf.concat([L, gt_a, gt_b], axis=-1)
-    orininal = tfio.experimental.color.lab_to_rgb(orininal)
-
+    orininal = tf.concat([input_y, img], axis=-1)
+    orininal = tf.cast(orininal, tf.uint8)
+    orininal = tfio.experimental.color.ycbcr_to_rgb(orininal)
     fig = plt.figure()
 
     ax0 = fig.add_subplot(1, 2, 1)
-    ax0.imshow(new_output)
+    ax0.imshow(output)
     ax0.set_title('Predict')
     ax0.axis("off")
 
@@ -155,10 +106,10 @@ for r, img in tqdm(test_set, total=test_steps):
     ax1.set_title('Original')
     ax1.axis("off")
 
-    plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+    # plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
     # pred = tf.cast(pred, tf.int32)
     plt.show()
-    # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', r[0])
+    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
 

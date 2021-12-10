@@ -9,10 +9,10 @@ import tensorflow as tf
 
 MOMENTUM = 0.9
 EPSILON = 1e-5
-DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
-# DECAY = None
-BN = tf.keras.layers.experimental.SyncBatchNormalization
-# BN = BatchNormalization
+# DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
+DECAY = None
+# BN = tf.keras.layers.experimental.SyncBatchNormalization
+BN = BatchNormalization
 CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=2.0, mode="fan_out", distribution="truncated_normal")
 # CONV_KERNEL_INITIALIZER = "he_normal"
 activation = 'swish'
@@ -82,7 +82,7 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
 def classifier(x, num_classes=2, upper=2, name=None):
     x = layers.Conv2D(num_classes, 3, strides=1, padding='same',
                       kernel_initializer=CONV_KERNEL_INITIALIZER, name="classifier")(x)
-    x = relu(x)
+    x = tanh(x)
     return x
 
 
@@ -92,7 +92,7 @@ def Conv1x1(x, channel, epsilon=1e-3):
                        kernel_regularizer=DECAY,
                         kernel_initializer=CONV_KERNEL_INITIALIZER,
                        use_bias=False)(x)
-    x = BN(axis=-1, momentum=0.9, epsilon=epsilon)(x)
+    x = BN(axis=-1, epsilon=epsilon)(x)
     x = Activation(activation)(x)
     return x
 
@@ -101,7 +101,7 @@ def Conv3x3(x, channel, rate, activation='swish'):
                        kernel_initializer=CONV_KERNEL_INITIALIZER,
                         kernel_regularizer=DECAY,
                        use_bias=False)(x)
-    x = BN(axis=-1, momentum=0.9, epsilon=1e-5)(x)
+    x = BN(axis=-1, epsilon=1e-5)(x)
     x = Activation(activation)(x)
 
     return x

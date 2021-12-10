@@ -2,11 +2,11 @@ from model.EfficientNetV2 import EfficientNetV2S
 # from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
-    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU,
+    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense,
     DepthwiseConv2D,  ZeroPadding2D)
 from tensorflow.keras.activations import tanh, relu
 import tensorflow as tf
-
+from tensorflow.keras.models import Model
 MOMENTUM = 0.9
 EPSILON = 1e-5
 # DECAY = tf.keras.regularizers.L2(l2=0.0001/2)
@@ -142,3 +142,21 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
         x = Activation(activation)(x)
 
     return x
+
+def build_discriminator(name='discriminator'):
+
+    inputs = Input(shape=(256, 256, 2))
+    x = Conv3x3(inputs, channel=64, rate=1, activation='relu')
+    x = MaxPooling2D()(x)
+    x = Conv3x3(x, channel=128, rate=1, activation='relu')
+    x = MaxPooling2D()(x)
+    x = Conv3x3(x, channel=256, rate=1, activation='relu')
+    x = MaxPooling2D()(x)
+    x = Conv3x3(x, channel=512, rate=1, activation='relu')
+    x = MaxPooling2D()(x)
+    x = Conv3x3(x, channel=512, rate=1, activation='relu')
+
+    x = Flatten()(x)
+    x = Dense(1, activation='sigmoid')(x)
+
+    return Model(inputs=inputs, outputs=x, name=name)

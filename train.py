@@ -112,7 +112,7 @@ if DISTRIBUTION_MODE:
         model = tf.keras.Model(model_input, model_output)
         model.compile(
             optimizer=optimizer,
-            loss='mae')
+            loss='mse')
 
         if LOAD_WEIGHT:
             weight_name = '_1002_best_miou'

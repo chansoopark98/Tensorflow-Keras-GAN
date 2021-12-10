@@ -59,20 +59,24 @@ class Dataset:
         Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
         gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
         gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y = tf.cast(gray_Y, tf.float32)
         gray_Y = (gray_Y / 127.5) - 1.0
         gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
         Cb = img_YCbCr[:, :, 1]
+        Cb = tf.cast(Cb, tf.float32)
         Cb = (Cb / 127.5) - 1.0
         Cb = tf.expand_dims(Cb, axis=-1)
 
         Cr = img_YCbCr[:, :, 2]
+        Cr = tf.cast(Cr, tf.float32)
         Cr = (Cr / 127.5) - 1.0
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
+
 
 
         return (gray_Y, CbCr)
@@ -92,20 +96,24 @@ class Dataset:
         Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
         gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
         gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y = tf.cast(gray_Y, tf.float32)
         gray_Y = (gray_Y / 127.5) - 1.0
         gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
         Cb = img_YCbCr[:, :, 1]
+        Cb = tf.cast(Cb, tf.float32)
         Cb = (Cb / 127.5) - 1.0
         Cb = tf.expand_dims(Cb, axis=-1)
 
         Cr = img_YCbCr[:, :, 2]
+        Cr = tf.cast(Cr, tf.float32)
         Cr = (Cr / 127.5) - 1.0
         Cr = tf.expand_dims(Cr, axis=-1)
 
         CbCr = tf.concat([Cb, Cr], axis=-1)
+
 
         return (gray_Y, CbCr)
 
@@ -118,16 +126,19 @@ class Dataset:
         Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
         gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
         gray_Y = gray_ycbcr[:, :, 0]
+        gray_Y = tf.cast(gray_Y, tf.float32)
         gray_Y = (gray_Y / 127.5) - 1.0
         gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
         Cb = img_YCbCr[:, :, 1]
+        Cb = tf.cast(Cb, tf.float32)
         Cb = (Cb / 127.5) - 1.0
         Cb = tf.expand_dims(Cb, axis=-1)
 
         Cr = img_YCbCr[:, :, 2]
+        Cr = tf.cast(Cr, tf.float32)
         Cr = (Cr / 127.5) - 1.0
         Cr = tf.expand_dims(Cr, axis=-1)
 

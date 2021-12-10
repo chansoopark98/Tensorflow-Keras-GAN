@@ -1,6 +1,7 @@
 import tensorflow_io as tfio
 import tensorflow_datasets as tfds
 import tensorflow as tf
+from skimage.color import rgb2ycbcr, ycbcr2rgb
 AUTO = tf.data.experimental.AUTOTUNE
 
 
@@ -54,32 +55,30 @@ class Dataset:
     def load_test(self, sample):
         img = sample['image']
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.cast(img, tf.uint8)
 
-        gray_img = tfio.experimental.color.rgb_to_grayscale(img)
-        Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
-        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_Y = gray_ycbcr[:, :, 0]
-        gray_Y = tf.cast(gray_Y, tf.float32)
-        gray_Y = (gray_Y / 127.5) - 1.0
-        gray_Y = tf.expand_dims(gray_Y, axis=-1)
+        img /= 255
+        yuv = tf.image.rgb_to_yuv(img)
+        yuv *= 255
 
+        y = yuv[:, :, 0]
+        y = tf.cast(y, tf.float32)
+        y = (y / 127.5) - 1.0
+        y = tf.expand_dims(y, axis=-1)
 
-        img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        Cb = img_YCbCr[:, :, 1]
-        Cb = tf.cast(Cb, tf.float32)
-        Cb = (Cb / 127.5) - 1.0
-        Cb = tf.expand_dims(Cb, axis=-1)
+        u = yuv[:, :, 1]
+        u = tf.cast(u, tf.float32)
+        u = (u / 127.5) - 1.0
+        u = tf.expand_dims(u, axis=-1)
 
-        Cr = img_YCbCr[:, :, 2]
-        Cr = tf.cast(Cr, tf.float32)
-        Cr = (Cr / 127.5) - 1.0
-        Cr = tf.expand_dims(Cr, axis=-1)
+        v = yuv[:, :, 2]
+        v = tf.cast(v, tf.float32)
+        v = (v / 127.5) - 1.0
+        v = tf.expand_dims(v, axis=-1)
 
-        CbCr = tf.concat([Cb, Cr], axis=-1)
+        uv = tf.concat([u, v], axis=-1)
 
-
-
-        return (gray_Y, CbCr)
+        return (y, uv)
 
     @tf.function
     def preprocess(self, sample):
@@ -92,67 +91,99 @@ class Dataset:
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
             img = self.zoom(img)
 
-        gray_img = tfio.experimental.color.rgb_to_grayscale(img)
-        Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
-        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_Y = gray_ycbcr[:, :, 0]
-        gray_Y = tf.cast(gray_Y, tf.float32)
-        gray_Y = (gray_Y / 127.5) - 1.0
-        gray_Y = tf.expand_dims(gray_Y, axis=-1)
+        img = tf.cast(img, tf.uint8)
 
+        img /= 255
+        yuv = tf.image.rgb_to_yuv(img)
+        yuv *= 255
 
-        img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        Cb = img_YCbCr[:, :, 1]
-        Cb = tf.cast(Cb, tf.float32)
-        Cb = (Cb / 127.5) - 1.0
-        Cb = tf.expand_dims(Cb, axis=-1)
+        y = yuv[:, :, 0]
+        y = tf.cast(y, tf.float32)
+        y = (y / 127.5) - 1.0
+        y = tf.expand_dims(y, axis=-1)
 
-        Cr = img_YCbCr[:, :, 2]
-        Cr = tf.cast(Cr, tf.float32)
-        Cr = (Cr / 127.5) - 1.0
-        Cr = tf.expand_dims(Cr, axis=-1)
+        u = yuv[:, :, 1]
+        u = tf.cast(u, tf.float32)
+        u = (u / 127.5) - 1.0
+        u = tf.expand_dims(u, axis=-1)
 
-        CbCr = tf.concat([Cb, Cr], axis=-1)
+        v = yuv[:, :, 2]
+        v = tf.cast(v, tf.float32)
+        v = (v / 127.5) - 1.0
+        v = tf.expand_dims(v, axis=-1)
 
+        uv = tf.concat([u, v], axis=-1)
 
-        return (gray_Y, CbCr)
+        return (y, uv)
 
     @tf.function
     def preprocess_valid(self, sample):
         img = sample['image']
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.cast(img, tf.uint8)
 
-        gray_img = tfio.experimental.color.rgb_to_grayscale(img)
-        Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
-        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_Y = gray_ycbcr[:, :, 0]
-        gray_Y = tf.cast(gray_Y, tf.float32)
-        gray_Y = (gray_Y / 127.5) - 1.0
-        gray_Y = tf.expand_dims(gray_Y, axis=-1)
+        img /= 255
+        yuv = tf.image.rgb_to_yuv(img)
+        yuv *= 255
 
+        y = yuv[:, :, 0]
+        y = tf.cast(y, tf.float32)
+        y = (y / 127.5) - 1.0
+        y = tf.expand_dims(y, axis=-1)
 
-        img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        Cb = img_YCbCr[:, :, 1]
-        Cb = tf.cast(Cb, tf.float32)
-        Cb = (Cb / 127.5) - 1.0
-        Cb = tf.expand_dims(Cb, axis=-1)
+        u = yuv[:, :, 1]
+        u = tf.cast(u, tf.float32)
+        u = (u / 127.5) - 1.0
+        u = tf.expand_dims(u, axis=-1)
 
-        Cr = img_YCbCr[:, :, 2]
-        Cr = tf.cast(Cr, tf.float32)
-        Cr = (Cr / 127.5) - 1.0
-        Cr = tf.expand_dims(Cr, axis=-1)
+        v = yuv[:, :, 2]
+        v = tf.cast(v, tf.float32)
+        v = (v / 127.5) - 1.0
+        v = tf.expand_dims(v, axis=-1)
 
-        CbCr = tf.concat([Cb, Cr], axis=-1)
+        uv = tf.concat([u, v], axis=-1)
 
-
-        return (gray_Y, CbCr)
+        return (y, uv)
 
     @tf.function
     def load_original_img(self, sample):
         img = sample['image']
         img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        return (img)
+        # # data augmentation
+        # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+        #     img = tf.image.flip_left_right(img)
+        # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+        #     img = self.zoom(img)
+
+        img = tf.cast(img, tf.uint8)
+
+        img /= 255
+        gray = tf.image.rgb_to_grayscale(img)
+        gray *= 255
+        yuv = tf.image.rgb_to_yuv(img)
+        yuv *= 255
+
+
+        y = gray[:, :, 0]
+        y = tf.cast(y, tf.float32)
+        y = (y / 127.5) - 1.0
+        y = tf.expand_dims(y, axis=-1)
+
+        u = yuv[:, :, 1]
+        u = tf.cast(u, tf.float32)
+        u = (u / 127.5) - 1.0
+        u = tf.expand_dims(u, axis=-1)
+
+        v = yuv[:, :, 2]
+        v = tf.cast(v, tf.float32)
+        v = (v / 127.5) - 1.0
+        v = tf.expand_dims(v, axis=-1)
+
+        uv = tf.concat([u, v], axis=-1)
+
+        return (y, u, v)
+
 
     @tf.function
     def gan_preprocess(self, sample):

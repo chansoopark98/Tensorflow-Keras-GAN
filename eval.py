@@ -76,35 +76,41 @@ batch_index = 1
 save_path = './checkpoints/results/'+SAVE_MODEL_NAME+'/'
 os.makedirs(save_path, exist_ok=True)
 
-for r, input_cbcr in tqdm(test_set, total=test_steps):
-    pred = model.predict_on_batch(r)
-    prediction = pred[0]
-    input_y = r[0]
-    img = input_cbcr[0]
+for input_y, gt_uv in tqdm(test_set, total=test_steps):
+    pred = model.predict_on_batch(input_y)
+    y = pred[0]
+    y = y.numpy()
+    u = pred[0][:, :, 0]
+    v = pred[0][:, :, 1]
 
-    input_y *= 255.
-    prediction *= 255.
-    img *= 255.
+    y = (y + 1) * 127.5
+    u = (u + 1) * 127.5
+    v = (v + 1) * 127.5
+
+    yuv = tf.concat([y, u, v], axis=-1)
+    yuv /= 255.
+    img = tf.image.yuv_to_rgb(yuv)
+
+    uv = gt_uv[0]
+    uv = (uv + 1) * 127.5
+    gt_yuv = tf.concat([y, uv], axis=-1)
+    gt_yuv /= 255.
+    gt_yuv = tf.image.yuv_to_rgb(gt_yuv)
 
 
-    output = tf.concat([input_y, prediction], axis=-1)
-    output = tf.cast(output, tf.uint8)
-    output = tfio.experimental.color.ycbcr_to_rgb(output)
-
-    orininal = tf.concat([input_y, img], axis=-1)
-    orininal = tf.cast(orininal, tf.uint8)
-    orininal = tfio.experimental.color.ycbcr_to_rgb(orininal)
+    rows = 1
+    cols = 2
     fig = plt.figure()
 
-    ax0 = fig.add_subplot(1, 2, 1)
-    ax0.imshow(output)
-    ax0.set_title('Predict')
+    ax0 = fig.add_subplot(rows, cols, 1)
+    ax0.imshow(img)
+    ax0.set_title('Prediction')
     ax0.axis("off")
 
-    ax1 = fig.add_subplot(1, 2, 2)
-    ax1.imshow(orininal)
-    ax1.set_title('Original')
-    ax1.axis("off")
+    ax0 = fig.add_subplot(rows, cols, 2)
+    ax0.imshow(gt_yuv)
+    ax0.set_title('Groundtruth')
+    ax0.axis("off")
 
     # plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
     # pred = tf.cast(pred, tf.int32)

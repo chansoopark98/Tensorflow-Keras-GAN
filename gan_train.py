@@ -1,4 +1,4 @@
-from __future__ import print_function, division
+# from __future__ import print_function, division
 from tensorflow.keras.layers import Input, Dense,  Flatten, Dropout, UpSampling2D, Conv2D
 from tensorflow.keras.layers import BatchNormalization, Activation, ZeroPadding2D, LeakyReLU, MaxPooling2D
 from tensorflow.keras.models import Sequential, Model
@@ -44,7 +44,7 @@ class GAN():
         #                                dataset='CustomCelebahq')
         # self.train_data = self.train_dataset_config.gan_trainData(self.train_dataset_config.train_data)
         self.train_data = tfds.load('CustomCelebahq',
-                               data_dir=DATASET_DIR, split='train[:50%]')
+                               data_dir=DATASET_DIR, split='train[:25%]')
         self.number_train = self.train_data.reduce(0, lambda x, _: x + 1).numpy()
         print("학습 데이터 개수", self.number_train)
         self.train_data = self.train_data.shuffle(1024)
@@ -83,8 +83,7 @@ class GAN():
         # The combined model  (stacked generator and discriminator)
         # Trains the generator to fool the discriminator
         self.combined = Model(z, validity)
-        self.combined.compile(loss='binary_crossentropy', optimizer=optimizer)
-
+        self.combined.compile(loss='mse', optimizer=optimizer)
 
     def build_generator(self):
 
@@ -114,46 +113,64 @@ class GAN():
 
     def train(self, epochs, batch_size=128, sample_interval=50):
 
-
+        pbar = tqdm(self.train_data, total=self.steps_per_epoch, desc = 'Batch', leave = True, disable=False)
         for epoch in range(epochs):
-            for features in tqdm(self.train_data, total=self.steps_per_epoch):
+            # for features in tqdm(self.train_data, total=self.steps_per_epoch):
+            for features in pbar:
             # for features in self.train_data:
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
-                img = tf.cast(features['image'], tf.float32)
+                img = tf.cast(features['image'], tf.uint8)
                 shape = img.shape
                 # Adversarial ground truths
                 valid = np.ones((shape[0], 1))
                 fake = np.zeros((shape[0], 1))
 
-                img = tf.image.resize(img, (512, 512), tf.image.ResizeMethod.BILINEAR)
-                # Generate L,a,b channels image From input RGB data.
-                img /= 255.  # input is Float type
+                img = tf.image.resize(img, (512, 512), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+                # gray_img = tfio.experimental.color.rgb_to_grayscale(img)
 
-                img_lab = tfio.experimental.color.rgb_to_lab(img)
-                L = img_lab[:, :, :, 0]
-                L = (L / 50.) - 1.
+                # gray_img = tf.image.rgb_to_grayscale(img)
+                #
+                # Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
+                # gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
+                # gray_Y = gray_ycbcr[:, :, 0]
+                # gray_Y = tf.cast(gray_Y, tf.float32)
+                # gray_Y = (gray_Y / 127.5) - 1.0
+                # gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
-                a = img_lab[:, :, :, 1]
-                a = ((a + 127.) / 255.) * 2 - 1.
+                img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
+                gray_Y = img_YCbCr[:, :, :, 0]
+                gray_Y = tf.cast(gray_Y, tf.float32)
+                gray_Y = (gray_Y / 127.5) - 1.0
+                # gray_Y /= 255.
+                gray_Y = tf.expand_dims(gray_Y, axis=-1)
 
-                b = img_lab[:, :, :, 2]
-                b = ((b + 127.) / 255.) * 2 - 1.
+                Cb = img_YCbCr[:, :, :, 1]
+                Cb = tf.cast(Cb, tf.float32)
+                Cb = (Cb / 127.5) - 1.0
+                # Cb /= 255.
+                Cb = tf.expand_dims(Cb, axis=-1)
 
-                L = tf.expand_dims(L, -1)
-                a = tf.expand_dims(a, -1)
-                b = tf.expand_dims(b, -1)
-                ab = tf.concat([a, b], axis=-1)
+                Cr = img_YCbCr[:, :, :, 2]
+                Cr = tf.cast(Cr, tf.float32)
+                Cr = (Cr / 127.5) - 1.0
+                # Cr /= 255.
+                Cr = tf.expand_dims(Cr, axis=-1)
+
+                CbCr = tf.concat([Cb, Cr], axis=-1)
 
 
                 # Generate a batch of new images
-                gen_imgs = self.generator.predict(L)
+
+
+                noise = tf.random.uniform(shape=[batch_size, 512, 512, 1], maxval=1.0)
+                gen_imgs = self.generator.predict(gray_Y)
 
                 # Train the discriminator
-                d_loss_real = self.discriminator.train_on_batch(ab, valid)
+                d_loss_real = self.discriminator.train_on_batch(CbCr, valid)
                 d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
-                self.d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+                d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
                 # ---------------------
                 #  Train Generator
@@ -162,13 +179,18 @@ class GAN():
                 # noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
 
                 # Train the generator (to have the discriminator label samples as valid)
-                self.g_loss = self.combined.train_on_batch(L, valid)
+                noise = tf.random.uniform(shape=[batch_size, 512, 512, 1], maxval=1.0)
+                g_loss = self.combined.train_on_batch(noise, valid)
 
                 # Plot the progress
                 # t.set_description("text", refresh=True)
 
-            print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (
-            epoch, self.d_loss[0], 100 * self.d_loss[1], self.g_loss))
+                # print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (
+                # epoch, self.d_loss[0], 100 * self.d_loss[1], self.g_loss))
+
+                pbar.set_description("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (
+                epoch, d_loss[0], 100 * d_loss[1], g_loss))
+
             # self.train_data = self.train_data.repeat()
 
 

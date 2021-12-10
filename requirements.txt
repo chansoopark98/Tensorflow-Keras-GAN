@@ -1,4 +1,5 @@
-tensorflow==2.6.2
+tensorflow==2.7.0
 tensorflow_datasets
 tensorflow_io
 tensorflow_addons
+matplotlib

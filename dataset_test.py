@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from utils.datasets import Dataset
 import argparse
 import tensorflow_io as tfio
-from skimage.color import rgb2lab, rgb2gray
+# from skimage.color import rgb2lab, rgb2gray
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", type=str, help="데이터셋 다운로드 디렉토리 설정", default='./datasets/')
@@ -55,50 +55,59 @@ if __name__ == "__main__":
 
 
         img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-        img_grayscale = tfio.experimental.color.rgb_to_grayscale(img)
-        Y = img_YCbCr[:, :, 0]
-        Y = tf.expand_dims(Y, axis=-1)
-
-        Gray = img_grayscale
-        Gray_3channel = tf.concat([Gray, Gray, Gray], axis=-1)
-        gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-        gray_Y = gray_ycbcr[:, :, 0]
-        gray_Y = tf.expand_dims(gray_Y, axis=-1)
-
-        Cb = img_YCbCr[:, :, 1]
-        Cb = tf.expand_dims(Cb, axis=-1)
-        Cr = img_YCbCr[:, :, 2]
-        Cr = tf.expand_dims(Cr, axis=-1)
-
-        convert_YCbCR = tf.concat([gray_Y, Cb, Cr], axis=-1)
-        convert_YCbCR = tf.cast(convert_YCbCR, tf.uint8)
-        convert_RGB = tfio.experimental.color.ycbcr_to_rgb(convert_YCbCR)
+        img = tf.expand_dims(img, 0)
+        gray = tf.image.rgb_to_grayscale(img)
+        # value = tf.image.convert_image_dtype(img, tf.float32)
+        # coeff = [0.2125, 0.7154, 0.0721]
+        # value = tf.tensordot(value, coeff, (-1, -1))
+        # value *= coeff
+        # value = tf.expand_dims(value, -1)
+        # gray_img = tf.image.convert_image_dtype(value, img.dtype)
+        Gray = gray[0]
+        # img_grayscale = tfio.experimental.color.rgb_to_grayscale(img)
+        # Y = img_YCbCr[:, :, 0]
+        # Y = tf.expand_dims(Y, axis=-1)
+        #
+        # # Gray = img_grayscale
+        # Gray_3channel = tf.concat([Gray, Gray, Gray], axis=-1)
+        # gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
+        # gray_Y = gray_ycbcr[:, :, 0]
+        # gray_Y = tf.expand_dims(gray_Y, axis=-1)
+        #
+        # Cb = img_YCbCr[:, :, 1]
+        # Cb = tf.expand_dims(Cb, axis=-1)
+        # Cr = img_YCbCr[:, :, 2]
+        # Cr = tf.expand_dims(Cr, axis=-1)
+        #
+        # convert_YCbCR = tf.concat([gray_Y, Cb, Cr], axis=-1)
+        # convert_YCbCR = tf.cast(convert_YCbCR, tf.uint8)
+        # convert_RGB = tfio.experimental.color.ycbcr_to_rgb(convert_YCbCR)
         rows = 1
-        cols = 4
+        cols = 1
 
 
 
         fig = plt.figure()
 
         ax0 = fig.add_subplot(rows, cols, 1)
-        ax0.imshow(convert_RGB)
-        ax0.set_title('RGB image')
+        ax0.imshow(Gray)
+        ax0.set_title('Gray image')
         ax0.axis("off")
 
-        ax1 = fig.add_subplot(rows, cols, 2)
-        ax1.imshow(Y)
-        ax1.set_title('Y image')
-        ax1.axis("off")
-
-        ax2 = fig.add_subplot(rows, cols, 3)
-        ax2.imshow(Cb)
-        ax2.set_title('Cb image')
-        ax2.axis("off")
-
-        ax3 = fig.add_subplot(rows, cols, 4)
-        ax3.imshow(Cr)
-        ax3.set_title('Cr image')
-        ax3.axis("off")
+        # ax1 = fig.add_subplot(rows, cols, 2)
+        # ax1.imshow(Gray)
+        # ax1.set_title('Gray image')
+        # ax1.axis("off")
+        #
+        # ax2 = fig.add_subplot(rows, cols, 3)
+        # ax2.imshow(Cb)
+        # ax2.set_title('Cb image')
+        # ax2.axis("off")
+        #
+        # ax3 = fig.add_subplot(rows, cols, 4)
+        # ax3.imshow(Cr)
+        # ax3.set_title('Cr image')
+        # ax3.axis("off")
 
         plt.show()
 

@@ -6,6 +6,7 @@ import argparse
 import time
 import os
 import tensorflow as tf
+import tensorflow_addons as tfa
 # LD_PRELOAD="/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4" python train.py
 
 tf.keras.backend.clear_session()
@@ -110,7 +111,7 @@ if DISTRIBUTION_MODE:
         model = tf.keras.Model(model_input, model_output)
         model.compile(
             optimizer=optimizer,
-            loss='mse')
+            loss='mae')
 
         if LOAD_WEIGHT:
             weight_name = '_1002_best_miou'

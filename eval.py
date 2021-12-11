@@ -65,8 +65,8 @@ model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_cl
 model = tf.keras.Model(model_input, model_output)
 # weight_name = '_1208_best_loss'
 
-# weight_name = '_1210_best_loss'
-weight_name = '_1210_best_val_loss'
+weight_name = '_1211_best_loss'
+# weight_name = '_1211_best_val_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
 
@@ -78,24 +78,48 @@ os.makedirs(save_path, exist_ok=True)
 
 for input_y, gt_uv in tqdm(test_set, total=test_steps):
     pred = model.predict_on_batch(input_y)
-    y = pred[0]
-    y = y.numpy()
+    pred = tf.cast(pred, tf.float32)
+
+    y = input_y[0]
     u = pred[0][:, :, 0]
     v = pred[0][:, :, 1]
 
     y = (y + 1) * 127.5
+    y = (y / 255.)
+
     u = (u + 1) * 127.5
+    u = (u / 255.) - 0.5
+
     v = (v + 1) * 127.5
+    v = (v / 255.) - 0.5
+
+    u = tf.expand_dims(u, -1)
+    v = tf.expand_dims(v, -1)
+
 
     yuv = tf.concat([y, u, v], axis=-1)
-    yuv /= 255.
+
     img = tf.image.yuv_to_rgb(yuv)
 
-    uv = gt_uv[0]
-    uv = (uv + 1) * 127.5
-    gt_yuv = tf.concat([y, uv], axis=-1)
-    gt_yuv /= 255.
+
+    gt_uv = gt_uv[0]
+
+    gt_u = gt_uv[:, :, 0]
+    gt_v = gt_uv[:, :, 1]
+
+    gt_u = (gt_u + 1) * 127.5
+    gt_u = (gt_u / 255.) - 0.5
+
+    gt_v = (gt_v + 1) * 127.5
+    gt_v = (gt_v / 255.) - 0.5
+
+    gt_u = tf.expand_dims(gt_u, -1)
+    gt_v = tf.expand_dims(gt_v, -1)
+
+
+    gt_yuv = tf.concat([y, gt_u, gt_v], axis=-1)
     gt_yuv = tf.image.yuv_to_rgb(gt_yuv)
+
 
 
     rows = 1
@@ -107,15 +131,15 @@ for input_y, gt_uv in tqdm(test_set, total=test_steps):
     ax0.set_title('Prediction')
     ax0.axis("off")
 
-    ax0 = fig.add_subplot(rows, cols, 2)
-    ax0.imshow(gt_yuv)
-    ax0.set_title('Groundtruth')
-    ax0.axis("off")
+    ax1 = fig.add_subplot(rows, cols, 2)
+    ax1.imshow(gt_yuv)
+    ax1.set_title('Groundtruth')
+    ax1.axis("off")
 
-    # plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+    plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
     # pred = tf.cast(pred, tf.int32)
-    plt.show()
-    tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
+    # plt.show()
+    # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
     # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
 

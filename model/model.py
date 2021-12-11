@@ -41,33 +41,29 @@ def colorization_model(input_shape=(512, 512, 1), classes=2):
 
     model_input = base.input
 
-    ### Conv high-level feature
-    x = Conv3x3(x, 256, rate=1)
-
-
     ### Decoder C4 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c4]) #160
-    x = Conv1x1(x, channel=256)
-    x = SepConv_BN(x, filters=256, prefix="decoder_c4", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=256, prefix="decoder_c4_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=256, prefix="decoder_c4_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Decoder C3 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c3]) #64
-    x = Conv1x1(x, channel=256)
-    x = SepConv_BN(x, filters=256, prefix="decoder_c3", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=224, prefix="decoder_c3_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=224, prefix="decoder_c3_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Decoder C2 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c2]) #48
-    x = Conv1x1(x, channel=256)
-    x = SepConv_BN(x, filters=256, prefix="decoder_c2", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=128, prefix="decoder_c2_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=128, prefix="decoder_c2_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Decoder C1 branch ###
     x = Upsampling(x, channel=256)
     x = Concatenate()([x, c1]) # 24
-    x = Conv1x1(x, channel=256)
-    x = SepConv_BN(x, filters=256, prefix="decoder_c1", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=64, prefix="decoder_c1_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
+    x = SepConv_BN(x, filters=64, prefix="decoder_c1_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
 
     ### Classifier ###
     x = classifier(x, 2)
@@ -108,7 +104,7 @@ def Conv3x3(x, channel, rate, activation='swish'):
 
 
 def Upsampling(x, channel):
-    x = UpSampling2D((2, 2), interpolation='nearest')(x)
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
     return x
 
 

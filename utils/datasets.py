@@ -43,36 +43,39 @@ class Dataset:
         return train_data, number_train
 
     @tf.function
-    def zoom(self, x, scale_min=0.7, scale_max=1.1):
+    def zoom(self, x, scale_min=0.5, scale_max=1.1):
         h, w, _ = x.shape
         scale = tf.random.uniform([], scale_min, scale_max)
         nh = h * scale
         nw = w * scale
-        x = tf.image.resize(x, (nh, nw), method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        x = tf.image.resize(x, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
         x = tf.image.resize_with_crop_or_pad(x, h, w)
         return x
 
     def load_test(self, sample):
         img = sample['image']
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         img = tf.cast(img, tf.uint8)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
         img /= 255
+        img = tf.cast(img, tf.float32)
         yuv = tf.image.rgb_to_yuv(img)
-        yuv *= 255
 
         y = yuv[:, :, 0]
         y = tf.cast(y, tf.float32)
+        y *= 255.
         y = (y / 127.5) - 1.0
         y = tf.expand_dims(y, axis=-1)
 
         u = yuv[:, :, 1]
         u = tf.cast(u, tf.float32)
+        u = (u + 0.5) * 255.
         u = (u / 127.5) - 1.0
         u = tf.expand_dims(u, axis=-1)
 
         v = yuv[:, :, 2]
         v = tf.cast(v, tf.float32)
+        v = (v + 0.5) * 255.
         v = (v / 127.5) - 1.0
         v = tf.expand_dims(v, axis=-1)
 
@@ -83,32 +86,36 @@ class Dataset:
     @tf.function
     def preprocess(self, sample):
         img = sample['image']
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.cast(img, tf.uint8)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
         # data augmentation
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
             img = tf.image.flip_left_right(img)
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            img = tf.image.random_brightness(img, 0.2)
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
             img = self.zoom(img)
 
-        img = tf.cast(img, tf.uint8)
-
         img /= 255
+        img = tf.cast(img, tf.float32)
         yuv = tf.image.rgb_to_yuv(img)
-        yuv *= 255
 
         y = yuv[:, :, 0]
         y = tf.cast(y, tf.float32)
+        y *= 255.
         y = (y / 127.5) - 1.0
         y = tf.expand_dims(y, axis=-1)
 
         u = yuv[:, :, 1]
         u = tf.cast(u, tf.float32)
+        u = (u + 0.5) * 255.
         u = (u / 127.5) - 1.0
         u = tf.expand_dims(u, axis=-1)
 
         v = yuv[:, :, 2]
         v = tf.cast(v, tf.float32)
+        v = (v + 0.5) * 255.
         v = (v / 127.5) - 1.0
         v = tf.expand_dims(v, axis=-1)
 
@@ -119,25 +126,28 @@ class Dataset:
     @tf.function
     def preprocess_valid(self, sample):
         img = sample['image']
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
         img = tf.cast(img, tf.uint8)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
         img /= 255
+        img = tf.cast(img, tf.float32)
         yuv = tf.image.rgb_to_yuv(img)
-        yuv *= 255
 
         y = yuv[:, :, 0]
         y = tf.cast(y, tf.float32)
+        y *= 255.
         y = (y / 127.5) - 1.0
         y = tf.expand_dims(y, axis=-1)
 
         u = yuv[:, :, 1]
         u = tf.cast(u, tf.float32)
+        u = (u + 0.5) * 255.
         u = (u / 127.5) - 1.0
         u = tf.expand_dims(u, axis=-1)
 
         v = yuv[:, :, 2]
         v = tf.cast(v, tf.float32)
+        v = (v + 0.5) * 255.
         v = (v / 127.5) - 1.0
         v = tf.expand_dims(v, axis=-1)
 
@@ -148,47 +158,14 @@ class Dataset:
     @tf.function
     def load_original_img(self, sample):
         img = sample['image']
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
 
-        # # data augmentation
-        # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-        #     img = tf.image.flip_left_right(img)
-        # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-        #     img = self.zoom(img)
-
-        img = tf.cast(img, tf.uint8)
-
-        img /= 255
-        gray = tf.image.rgb_to_grayscale(img)
-        gray *= 255
-        yuv = tf.image.rgb_to_yuv(img)
-        yuv *= 255
-
-
-        y = gray[:, :, 0]
-        y = tf.cast(y, tf.float32)
-        y = (y / 127.5) - 1.0
-        y = tf.expand_dims(y, axis=-1)
-
-        u = yuv[:, :, 1]
-        u = tf.cast(u, tf.float32)
-        u = (u / 127.5) - 1.0
-        u = tf.expand_dims(u, axis=-1)
-
-        v = yuv[:, :, 2]
-        v = tf.cast(v, tf.float32)
-        v = (v / 127.5) - 1.0
-        v = tf.expand_dims(v, axis=-1)
-
-        uv = tf.concat([u, v], axis=-1)
-
-        return (y, u, v)
+        return (img)
 
 
     @tf.function
     def gan_preprocess(self, sample):
         img = tf.cast(sample['image'], tf.float32)
-        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
 
         # data augmentation
         if tf.random.uniform([], minval=0, maxval=1) > 0.5:

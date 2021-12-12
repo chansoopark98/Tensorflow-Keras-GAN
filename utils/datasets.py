@@ -37,6 +37,11 @@ class Dataset:
         train_data = tfds.load(self.dataset_name,
                                data_dir=self.data_dir, split='train[5%:]')
 
+        low_quality_train_data = tfds.load('CustomCeleba',
+                               data_dir=self.data_dir, split='train')
+
+        train_data = train_data.concatenate(low_quality_train_data)
+
         number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
         print("학습 데이터 개수", number_train)
 

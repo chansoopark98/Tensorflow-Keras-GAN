@@ -87,7 +87,7 @@ if __name__ == '__main__':
     print("학습 데이터 개수", number_train)
     steps_per_epoch = number_train // BATCH_SIZE
     train_data = train_data.shuffle(1024)
-    train_data = train_data.batch(BATCH_SIZE)
+    train_data = train_data.padded_batch(BATCH_SIZE)
 
     pbar = tqdm(train_data, total=steps_per_epoch, desc = 'Batch', leave = True, disable=False)
 
@@ -102,9 +102,6 @@ if __name__ == '__main__':
             # ---------------------
             img = tf.cast(features['image'], tf.uint8)
             shape = img.shape
-            # Adversarial ground truths
-            valid = np.ones((shape[0], 1))
-            fake = np.zeros((shape[0], 1))
 
             img = tf.cast(img, tf.uint8)
             img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
@@ -137,17 +134,18 @@ if __name__ == '__main__':
                 toggle = not toggle
                 if toggle:
                     x_dis = tf.concat((model_gen.predict(y), y), axis=3)
-                    y_dis = np.zeros((BATCH_SIZE, 1)) # TODO: np to tf
+                    y_dis = tf.zeros((shape[0], 1)) # TODO: np to tf
                 else:
                     x_dis = tf.concat((uv, y), axis=3)
-                    y_dis = np.ones((BATCH_SIZE, 1))
-                    y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
+                    y_dis = tf.ones((shape[0], 1))
+                    # y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
+                    y_dis = tf.random.uniform(shape=(shape[0], 1), minval=0.9, maxval=1.0)
 
                 dis_res = model_dis.train_on_batch(x_dis, y_dis)
 
             model_dis.trainable = False
             x_gen = y
-            y_gen = np.ones((BATCH_SIZE, 1))
+            y_gen = tf.ones((shape[0], 1))
             x_output = uv
             gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
             model_dis.trainable = True
@@ -155,14 +153,6 @@ if __name__ == '__main__':
             pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
                                     gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
 
-            # progbar.add(BATCH_SIZE,
-            #             values=[("D loss", dis_res),
-            #                     ("G total loss", gan_res[0]),
-            #                     ("G loss", gan_res[1]),
-            #                     ("G L1", gan_res[2]),
-            #                     ("pacc", gan_res[5]),
-            #                     ("acc", gan_res[6])])
-
-            model_gen.save_weights(WEIGHTS_GEN, overwrite=True)
-            model_dis.save_weights(WEIGHTS_DIS, overwrite=True)
-            model_gan.save_weights(WEIGHTS_GAN, overwrite=True)
+        model_gen.save_weights(WEIGHTS_GEN, overwrite=True)
+        model_dis.save_weights(WEIGHTS_DIS, overwrite=True)
+        model_gan.save_weights(WEIGHTS_GAN, overwrite=True)

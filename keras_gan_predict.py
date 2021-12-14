@@ -1,21 +1,23 @@
-from model.model_builder import build_dis, build_gen
+from model.model_builder import base_model, build_dis
 import tensorflow as tf
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error
-from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import tensorflow.keras.backend as K
 from tqdm import tqdm
 import tensorflow_datasets as tfds
+import matplotlib.pyplot as plt
+import os
 
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
+
 
 def l1(y_true, y_pred):
     return K.mean(K.abs(y_pred - y_true))
 
 def create_model_gen(input_shape, output_channels):
-    model_input, model_output = build_gen(image_size=input_shape, output_channels=output_channels)
+    model_input, model_output = base_model(image_size=input_shape, num_classes=output_channels)
 
     model = tf.keras.Model(model_input, model_output)
     return model
@@ -37,7 +39,6 @@ def create_model_gan(input_shape, generator, discriminator):
 
 def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentum, loss_weights):
     optimizer = Adam(lr=lr, beta_1=momentum)
-    optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
     model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
     model_gen.compile(loss=mean_absolute_error, optimizer=optimizer)
@@ -60,14 +61,14 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
 if __name__ == '__main__':
     EPOCHS = 100
-    BATCH_SIZE = 16
-    LEARNING_RATE = 0.00002
+    BATCH_SIZE = 1
+    LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 10
-    INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 4)
-    GEN_OUTPUT_CHANNEL = 3
+    INPUT_SHAPE_GEN = (512, 512, 1)
+    INPUT_SHAPE_DIS = (512, 512, 3)
+    GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
     WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
     WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis.h5'
@@ -81,6 +82,7 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
+    model_gen.load_weights('./checkpoints/YUV_GAN_Gen.h5', by_name=True)
     train_data = tfds.load('CustomCelebahq',
                                 data_dir=DATASET_DIR, split='train[:25%]', shuffle_files=True)
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
@@ -91,16 +93,13 @@ if __name__ == '__main__':
     # train_data = train_data.repeat(EPOCHS)
     train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
+    save_path = './checkpoints/results/' + 'gan' + '/'
+    os.makedirs(save_path, exist_ok=True)
+    batch_index = 0
     for epoch in range(EPOCHS):
         pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
-        batch_counter = 0
-        toggle = True
-        dis_res = 0
+
         for features in pbar:
-            batch_counter += 1
-            # ---------------------
-            #  Train Discriminator
-            # ---------------------
             img = tf.cast(features['image'], tf.uint8)
             shape = img.shape
 
@@ -114,49 +113,78 @@ if __name__ == '__main__':
             y = yuv[:, :, :, 0]
             y = tf.cast(y, tf.float32)
             y *= 255.
-            # y = (y / 127.5) - 1.0
-            y /= 255.
+            y = (y / 127.5) - 1.0
             y = tf.expand_dims(y, axis=-1)
 
             u = yuv[:, :, :, 1]
             u = tf.cast(u, tf.float32)
             u = (u + 0.5) * 255.
-            # u = (u / 127.5) - 1.0
-            u /= 255.
+            u = (u / 127.5) - 1.0
             u = tf.expand_dims(u, axis=-1)
 
             v = yuv[:, :, :, 2]
             v = tf.cast(v, tf.float32)
             v = (v + 0.5) * 255.
-            # v = (v / 127.5) - 1.0
-            v /= 255.
+            v = (v / 127.5) - 1.0
             v = tf.expand_dims(v, axis=-1)
 
-            yuv = tf.concat([y, u, v], axis=-1)
+            uv = tf.concat([u, v], axis=-1)
 
-            if batch_counter % 2 == 0:
-                toggle = not toggle
-                if toggle:
-                    x_dis = tf.concat((model_gen.predict(y), y), axis=3)
-                    y_dis = tf.zeros((shape[0], 1)) # TODO: np to tf
-                else:
-                    x_dis = tf.concat((yuv, y), axis=3)
-                    y_dis = tf.ones((shape[0], 1))
-                    # y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
-                    y_dis = tf.random.uniform(shape=(shape[0], 1), minval=0.9, maxval=1.0)
+            pred_uv = model_gen.predict(y)
 
-                dis_res = model_dis.train_on_batch(x_dis, y_dis)
+            pred_u = pred_uv[0][:, :, 0]
+            pred_v = pred_uv[0][:, :, 1]
 
-            model_dis.trainable = False
-            x_gen = y
-            y_gen = tf.ones((shape[0], 1))
-            x_output = yuv
-            gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
-            model_dis.trainable = True
+            y = y[0]
+            u = u[0]
+            v = v[0]
 
-            pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
-                                    gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
+            y = (y + 1) * 127.5
+            y = (y / 255.)
 
-        model_gen.save_weights(WEIGHTS_GEN, overwrite=True)
-        model_dis.save_weights(WEIGHTS_DIS, overwrite=True)
-        model_gan.save_weights(WEIGHTS_GAN, overwrite=True)
+            pred_u = (pred_u + 1) * 127.5
+            pred_u = (pred_u / 255.) - 0.5
+
+            pred_v = (pred_v + 1) * 127.5
+            pred_v = (pred_v / 255.) - 0.5
+
+            pred_u = tf.expand_dims(pred_u, -1)
+            pred_v = tf.expand_dims(pred_v, -1)
+
+            pred_yuv = tf.concat([y, pred_u, pred_v], axis=-1)
+
+            pred_yuv = tf.image.yuv_to_rgb(pred_yuv)
+
+
+            u = (u + 1) * 127.5
+            u = (u / 255.) - 0.5
+
+            v = (v + 1) * 127.5
+            v = (v / 255.) - 0.5
+
+
+            gt_yuv = tf.concat([y, u, v], axis=-1)
+            gt_yuv = tf.image.yuv_to_rgb(gt_yuv)
+
+            rows = 1
+            cols = 2
+            fig = plt.figure()
+
+            ax0 = fig.add_subplot(rows, cols, 1)
+            ax0.imshow(pred_yuv)
+            ax0.set_title('Prediction')
+            ax0.axis("off")
+
+            ax1 = fig.add_subplot(rows, cols, 2)
+            ax1.imshow(gt_yuv)
+            ax1.set_title('Groundtruth')
+            ax1.axis("off")
+
+            plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+            # pred = tf.cast(pred, tf.int32)
+            # plt.show()
+            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
+            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
+            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
+
+            batch_index += 1

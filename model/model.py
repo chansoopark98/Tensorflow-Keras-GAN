@@ -2,7 +2,7 @@ from model.EfficientNetV2 import EfficientNetV2S
 # from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
-    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense,
+    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout,
     DepthwiseConv2D,  ZeroPadding2D)
 from tensorflow.keras.activations import tanh, relu
 import tensorflow as tf
@@ -102,6 +102,22 @@ def Conv3x3(x, channel, rate, activation='swish'):
 
     return x
 
+def create_conv(filters, kernel_size, inputs, name=None, bn=True, dropout=0., padding='same', activation='relu'):
+    conv = Conv2D(filters, kernel_size, padding=padding,
+                  kernel_initializer='he_normal', name=name)(inputs)
+
+    if bn:
+        conv = BatchNormalization()(conv)
+
+    if activation == 'relu':
+        conv = Activation(activation)(conv)
+    elif activation == 'leakyrelu':
+        conv = LeakyReLU()(conv)
+
+    if dropout != 0:
+        conv = Dropout(dropout)(conv)
+
+    return conv
 
 def Upsampling(x, channel):
     x = UpSampling2D((2, 2), interpolation='bilinear')(x)
@@ -139,20 +155,24 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
 
     return x
 
-def build_discriminator(name='discriminator'):
+def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
 
-    inputs = Input(shape=(256, 256, 2))
-    x = Conv3x3(inputs, channel=64, rate=1, activation='relu')
-    x = MaxPooling2D()(x)
-    x = Conv3x3(x, channel=128, rate=1, activation='relu')
-    x = MaxPooling2D()(x)
-    x = Conv3x3(x, channel=256, rate=1, activation='relu')
-    x = MaxPooling2D()(x)
-    x = Conv3x3(x, channel=512, rate=1, activation='relu')
-    x = MaxPooling2D()(x)
-    x = Conv3x3(x, channel=512, rate=1, activation='relu')
+    inputs = Input(shape=image_size)
+    conv1 = create_conv(64, (3, 3), inputs, 'conv1', activation='leakyrelu', dropout=.8)
+    pool1 = MaxPooling2D((2, 2))(conv1)
 
-    x = Flatten()(x)
-    x = Dense(1, activation='sigmoid')(x)
+    conv2 = create_conv(128, (3, 3), pool1, 'conv2', activation='leakyrelu', dropout=.8)
+    pool2 = MaxPooling2D((2, 2))(conv2)
 
-    return Model(inputs=inputs, outputs=x, name=name)
+    conv3 = create_conv(256, (3, 3), pool2, 'conv3', activation='leakyrelu', dropout=.8)
+    pool3 = MaxPooling2D((2, 2))(conv3)
+
+    conv4 = create_conv(512, (3, 3), pool3, 'conv4', activation='leakyrelu', dropout=.8)
+    pool4 = MaxPooling2D((2, 2))(conv4)
+
+    conv5 = create_conv(512, (3, 3), pool4, 'conv5', activation='leakyrelu', dropout=.8)
+
+    flat = Flatten()(conv5)
+    dense6 = Dense(1, activation='sigmoid')(flat)
+
+    return inputs, dense6

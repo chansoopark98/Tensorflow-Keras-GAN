@@ -82,7 +82,7 @@ if __name__ == '__main__':
         loss_weights=[LAMBDA1, LAMBDA2])
 
     train_data = tfds.load('CustomCelebahq',
-                                data_dir=DATASET_DIR, split='train[:25%]', shuffle_files=True)
+                                data_dir=DATASET_DIR, split='train', shuffle_files=True)
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)
     steps_per_epoch = number_train // BATCH_SIZE

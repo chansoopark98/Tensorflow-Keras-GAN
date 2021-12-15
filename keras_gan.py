@@ -63,7 +63,8 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 if __name__ == '__main__':
     EPOCHS = 200
     BATCH_SIZE = 32
-    LEARNING_RATE = 0.0005
+    # LEARNING_RATE = 0.0005
+    LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
@@ -109,7 +110,18 @@ if __name__ == '__main__':
             shape = img.shape
 
             img = tf.cast(img, tf.uint8)
-            img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
+            img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BICUBIC)
+
+            # data augmentation
+            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+                img = tf.image.flip_left_right(img)
+            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+                h, w, _ = img.shape
+                scale = tf.random.uniform([], 0.7, 1.1)
+                nh = h * scale
+                nw = w * scale
+                img = tf.image.resize(img, (nh, nw), method=tf.image.ResizeMethod.BICUBIC)
+                img = tf.image.resize_with_crop_or_pad(img, h, w)
 
             img /= 255
             img = tf.cast(img, tf.float32)

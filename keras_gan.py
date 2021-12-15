@@ -115,13 +115,6 @@ if __name__ == '__main__':
             # data augmentation
             if tf.random.uniform([], minval=0, maxval=1) > 0.5:
                 img = tf.image.flip_left_right(img)
-            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-                h, w, _ = img.shape
-                scale = tf.random.uniform([], 0.7, 1.1)
-                nh = h * scale
-                nw = w * scale
-                img = tf.image.resize(img, (nh, nw), method=tf.image.ResizeMethod.BICUBIC)
-                img = tf.image.resize_with_crop_or_pad(img, h, w)
 
             img /= 255
             img = tf.cast(img, tf.float32)

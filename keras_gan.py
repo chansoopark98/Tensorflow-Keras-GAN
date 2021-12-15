@@ -8,6 +8,7 @@ import tensorflow.keras.backend as K
 from tqdm import tqdm
 import tensorflow_datasets as tfds
 
+
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
 
@@ -36,7 +37,8 @@ def create_model_gan(input_shape, generator, discriminator):
     return model
 
 def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentum, loss_weights):
-    optimizer = Adam(lr=lr, beta_1=momentum)
+
+    optimizer = Adam(learning_rate=lr, beta_1=momentum)
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
     model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
@@ -60,7 +62,7 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
 if __name__ == '__main__':
     EPOCHS = 200
-    BATCH_SIZE = 8
+    BATCH_SIZE = 32
     LEARNING_RATE = 0.0005
     MOMENTUM = 0.5
     LAMBDA1 = 1
@@ -82,7 +84,8 @@ if __name__ == '__main__':
         loss_weights=[LAMBDA1, LAMBDA2])
 
     train_data = tfds.load('CustomCelebahq',
-                                data_dir=DATASET_DIR, split='train', shuffle_files=True)
+                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)
     steps_per_epoch = number_train // BATCH_SIZE
@@ -90,6 +93,7 @@ if __name__ == '__main__':
     train_data = train_data.padded_batch(BATCH_SIZE)
     # train_data = train_data.repeat(EPOCHS)
     train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
+
 
     for epoch in range(EPOCHS):
         pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)

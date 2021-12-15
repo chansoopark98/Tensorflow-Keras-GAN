@@ -61,15 +61,15 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
     return model_gen, model_dis, model_gan
 
 if __name__ == '__main__':
-    EPOCHS = 100
+    EPOCHS = 200
     BATCH_SIZE = 1
-    LEARNING_RATE = 0.00002
+    LEARNING_RATE = 0.0005
     MOMENTUM = 0.5
     LAMBDA1 = 1
-    LAMBDA2 = 10
+    LAMBDA2 = 100
     INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 4)
-    GEN_OUTPUT_CHANNEL = 3
+    INPUT_SHAPE_DIS = (256, 256, 3)
+    GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
     WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
     WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis.h5'
@@ -103,10 +103,7 @@ if __name__ == '__main__':
         for features in pbar:
             img = tf.cast(features['image'], tf.uint8)
             shape = img.shape
-
-            img = tf.cast(img, tf.uint8)
             img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
-
             img /= 255
             img = tf.cast(img, tf.float32)
             yuv = tf.image.rgb_to_yuv(img)
@@ -132,24 +129,15 @@ if __name__ == '__main__':
             v /= 255.
             v = tf.expand_dims(v, axis=-1)
 
-            yuv = tf.concat([y, u, v], axis=-1)
+            uv = tf.concat([u, v], axis=-1)
 
             pred_yuv = model_gen.predict(y)
 
-            y = yuv[0][:, :, 0]
-            u = yuv[0][:, :, 1]
-            v = yuv[0][:, :, 2]
-
-            y *= 255.
-            y = (y / 255.)
-            y = tf.expand_dims(y, -1)
-
-            pred_y = pred_yuv[0][:, :, 0]
-            pred_u = pred_yuv[0][:, :, 1]
-            pred_v = pred_yuv[0][:, :, 2]
-
-            pred_y *= 255.
-            pred_y /= 255.
+            y = y[0]
+            u =u[0]
+            v =v[0]
+            pred_u = pred_yuv[0][:, :, 0]
+            pred_v = pred_yuv[0][:, :, 1]
 
             pred_u *= 255.
             pred_u = (pred_u / 255.) - 0.5
@@ -157,7 +145,6 @@ if __name__ == '__main__':
             pred_v *= 255.
             pred_v = (pred_v / 255.) - 0.5
 
-            pred_y = tf.expand_dims(pred_y, -1)
             pred_u = tf.expand_dims(pred_u, -1)
             pred_v = tf.expand_dims(pred_v, -1)
 
@@ -173,9 +160,6 @@ if __name__ == '__main__':
             v *= 255.
             v = (v / 255.) - 0.5
 
-
-            u = tf.expand_dims(u, -1)
-            v = tf.expand_dims(v, -1)
 
 
             gt_yuv = tf.concat([y, u, v], axis=-1)

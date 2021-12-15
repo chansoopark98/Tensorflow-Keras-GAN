@@ -60,6 +60,12 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     return model_gen, model_dis, model_gan
 
+def demo_prepare(path):
+    img = tf.io.read_file(path)
+    img = tf.image.decode_image(img, channels=3)
+    img = tf.image.resize_with_pad(img, 512, 512)
+    return (img)
+
 if __name__ == '__main__':
     EPOCHS = 200
     BATCH_SIZE = 1
@@ -97,13 +103,25 @@ if __name__ == '__main__':
     save_path = './checkpoints/results/' + 'gan' + '/'
     os.makedirs(save_path, exist_ok=True)
     batch_index = 0
+
+    filenames = os.listdir('./demo_images')
+    filenames.sort()
+    demo_imgs = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
+    demo_test = demo_imgs.map(demo_prepare)
+    demo_test = demo_test.batch(BATCH_SIZE)
+    demo_steps = len(filenames) // BATCH_SIZE
+
     for epoch in range(EPOCHS):
-        pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
+        pbar = tqdm(demo_test, total=demo_steps, desc='Batch', leave=True, disable=False)
 
         for features in pbar:
-            img = tf.cast(features['image'], tf.uint8)
+            if demo:
+                img = features
+            else:
+                img = tf.cast(features['image'], tf.uint8)
             shape = img.shape
-            img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
+            # img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
+            img = tf.image.resize_with_pad(img, 512, 512)
             img /= 255
             img = tf.cast(img, tf.float32)
             yuv = tf.image.rgb_to_yuv(img)

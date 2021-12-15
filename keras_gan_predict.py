@@ -110,98 +110,103 @@ if __name__ == '__main__':
     demo_test = demo_imgs.map(demo_prepare)
     demo_test = demo_test.batch(BATCH_SIZE)
     demo_steps = len(filenames) // BATCH_SIZE
+    demo = True
+    demo_path = './demo_outputs/' + 'demo/'
+    os.makedirs(demo_path, exist_ok=True)
 
-    for epoch in range(EPOCHS):
-        pbar = tqdm(demo_test, total=demo_steps, desc='Batch', leave=True, disable=False)
+    pbar = tqdm(demo_test, total=demo_steps, desc='Batch', leave=True, disable=False)
 
-        for features in pbar:
-            if demo:
-                img = features
-            else:
-                img = tf.cast(features['image'], tf.uint8)
-            shape = img.shape
-            # img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
-            img = tf.image.resize_with_pad(img, 512, 512)
-            img /= 255
-            img = tf.cast(img, tf.float32)
-            yuv = tf.image.rgb_to_yuv(img)
+    for features in pbar:
+        if demo:
+            img = features
+        else:
+            img = tf.cast(features['image'], tf.uint8)
+        shape = img.shape
+        # img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
+        img = tf.image.resize_with_pad(img, 256, 256)
+        img /= 255
+        img = tf.cast(img, tf.float32)
+        yuv = tf.image.rgb_to_yuv(img)
 
-            y = yuv[:, :, :, 0]
-            y = tf.cast(y, tf.float32)
-            y *= 255.
-            # y = (y / 127.5) - 1.0
-            y /= 255.
-            y = tf.expand_dims(y, axis=-1)
+        y = yuv[:, :, :, 0]
+        y = tf.cast(y, tf.float32)
+        y *= 255.
+        # y = (y / 127.5) - 1.0
+        y /= 255.
+        y = tf.expand_dims(y, axis=-1)
 
-            u = yuv[:, :, :, 1]
-            u = tf.cast(u, tf.float32)
-            u = (u + 0.5) * 255.
-            # u = (u / 127.5) - 1.0
-            u /= 255.
-            u = tf.expand_dims(u, axis=-1)
+        u = yuv[:, :, :, 1]
+        u = tf.cast(u, tf.float32)
+        u = (u + 0.5) * 255.
+        # u = (u / 127.5) - 1.0
+        u /= 255.
+        u = tf.expand_dims(u, axis=-1)
 
-            v = yuv[:, :, :, 2]
-            v = tf.cast(v, tf.float32)
-            v = (v + 0.5) * 255.
-            # v = (v / 127.5) - 1.0
-            v /= 255.
-            v = tf.expand_dims(v, axis=-1)
+        v = yuv[:, :, :, 2]
+        v = tf.cast(v, tf.float32)
+        v = (v + 0.5) * 255.
+        # v = (v / 127.5) - 1.0
+        v /= 255.
+        v = tf.expand_dims(v, axis=-1)
 
-            uv = tf.concat([u, v], axis=-1)
+        uv = tf.concat([u, v], axis=-1)
 
-            pred_yuv = model_gen.predict(y)
+        pred_yuv = model_gen.predict(y)
 
-            y = y[0]
-            u =u[0]
-            v =v[0]
-            pred_u = pred_yuv[0][:, :, 0]
-            pred_v = pred_yuv[0][:, :, 1]
+        y = y[0]
+        u =u[0]
+        v =v[0]
+        pred_u = pred_yuv[0][:, :, 0]
+        pred_v = pred_yuv[0][:, :, 1]
 
-            pred_u *= 255.
-            pred_u = (pred_u / 255.) - 0.5
+        pred_u *= 255.
+        pred_u = (pred_u / 255.) - 0.5
 
-            pred_v *= 255.
-            pred_v = (pred_v / 255.) - 0.5
+        pred_v *= 255.
+        pred_v = (pred_v / 255.) - 0.5
 
-            pred_u = tf.expand_dims(pred_u, -1)
-            pred_v = tf.expand_dims(pred_v, -1)
+        pred_u = tf.expand_dims(pred_u, -1)
+        pred_v = tf.expand_dims(pred_v, -1)
 
-            pred_yuv = tf.concat([y, pred_u, pred_v], axis=-1)
+        pred_yuv = tf.concat([y, pred_u, pred_v], axis=-1)
 
-            pred_yuv = tf.image.yuv_to_rgb(pred_yuv)
-
-
-
-            u *= 255.
-            u = (u / 255.) - 0.5
-
-            v *= 255.
-            v = (v / 255.) - 0.5
+        pred_yuv = tf.image.yuv_to_rgb(pred_yuv)
 
 
 
-            gt_yuv = tf.concat([y, u, v], axis=-1)
-            gt_yuv = tf.image.yuv_to_rgb(gt_yuv)
+        u *= 255.
+        u = (u / 255.) - 0.5
 
-            rows = 1
-            cols = 2
-            fig = plt.figure()
+        v *= 255.
+        v = (v / 255.) - 0.5
 
-            ax0 = fig.add_subplot(rows, cols, 1)
-            ax0.imshow(pred_yuv)
-            ax0.set_title('Prediction')
-            ax0.axis("off")
 
-            ax1 = fig.add_subplot(rows, cols, 2)
-            ax1.imshow(gt_yuv)
-            ax1.set_title('Groundtruth')
-            ax1.axis("off")
 
+        gt_yuv = tf.concat([y, u, v], axis=-1)
+        gt_yuv = tf.image.yuv_to_rgb(gt_yuv)
+
+        rows = 1
+        cols = 2
+        fig = plt.figure()
+
+        ax0 = fig.add_subplot(rows, cols, 1)
+        ax0.imshow(pred_yuv)
+        ax0.set_title('Prediction')
+        ax0.axis("off")
+
+        ax1 = fig.add_subplot(rows, cols, 2)
+        ax1.imshow(gt_yuv)
+        ax1.set_title('Groundtruth')
+        ax1.axis("off")
+
+        if demo:
+            plt.savefig(demo_path + str(batch_index) + 'output.png', dpi=300)
+        else:
             plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
-            # pred = tf.cast(pred, tf.int32)
-            # plt.show()
-            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
-            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
-            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
+        # pred = tf.cast(pred, tf.int32)
+        # plt.show()
+        # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
+        # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
+        # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
 
-            batch_index += 1
+        batch_index += 1

@@ -59,15 +59,15 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
     return model_gen, model_dis, model_gan
 
 if __name__ == '__main__':
-    EPOCHS = 100
-    BATCH_SIZE = 16
-    LEARNING_RATE = 0.00002
+    EPOCHS = 200
+    BATCH_SIZE = 8
+    LEARNING_RATE = 0.0005
     MOMENTUM = 0.5
     LAMBDA1 = 1
-    LAMBDA2 = 10
+    LAMBDA2 = 100
     INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 4)
-    GEN_OUTPUT_CHANNEL = 3
+    INPUT_SHAPE_DIS = (256, 256, 3)
+    GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
     WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
     WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis.h5'
@@ -132,7 +132,7 @@ if __name__ == '__main__':
             v /= 255.
             v = tf.expand_dims(v, axis=-1)
 
-            yuv = tf.concat([y, u, v], axis=-1)
+            uv = tf.concat([u, v], axis=-1)
 
             if batch_counter % 2 == 0:
                 toggle = not toggle
@@ -140,17 +140,18 @@ if __name__ == '__main__':
                     x_dis = tf.concat((model_gen.predict(y), y), axis=3)
                     y_dis = tf.zeros((shape[0], 1)) # TODO: np to tf
                 else:
-                    x_dis = tf.concat((yuv, y), axis=3)
+                    x_dis = tf.concat((uv, y), axis=3)
                     y_dis = tf.ones((shape[0], 1))
+                    y_dis = tf.ones((shape[0], 1)) * 0.9
                     # y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
-                    y_dis = tf.random.uniform(shape=(shape[0], 1), minval=0.9, maxval=1.0)
+
 
                 dis_res = model_dis.train_on_batch(x_dis, y_dis)
 
             model_dis.trainable = False
             x_gen = y
             y_gen = tf.ones((shape[0], 1))
-            x_output = yuv
+            x_output = uv
             gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
             model_dis.trainable = True
 

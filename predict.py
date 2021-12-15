@@ -122,13 +122,13 @@ for input_y, gt_uv in tqdm(demo_test, total=demo_steps):
     u = pred[0][:, :, 0]
     v = pred[0][:, :, 1]
 
-    y = (y + 1) * 127.5
+    y = (y + 1.0) * 127.5
     y = (y / 255.)
 
-    u = (u + 1) * 127.5
+    u = (u + 1.0) * 127.5
     u = (u / 255.) - 0.5
 
-    v = (v + 1) * 127.5
+    v = (v + 1.0) * 127.5
     v = (v / 255.) - 0.5
 
     u = tf.expand_dims(u, -1)

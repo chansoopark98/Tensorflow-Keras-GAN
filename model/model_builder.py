@@ -9,7 +9,7 @@ def base_model(image_size, num_classes):
     # return tf.keras.Model(model_input, model_output)
     return model_input, model_output
 
-def build_gen(image_size, output_channels=3):
+def build_gen(image_size, output_channels=2):
     model_input, model_output = build_generator(input_shape=image_size, output_channels=output_channels)
 
     return model_input, model_output

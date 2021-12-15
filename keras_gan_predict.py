@@ -1,8 +1,9 @@
-from model.model_builder import base_model, build_dis
+from model.model_builder import build_dis, build_gen
 import tensorflow as tf
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import tensorflow.keras.backend as K
 from tqdm import tqdm
 import tensorflow_datasets as tfds
@@ -12,12 +13,11 @@ import os
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
 
-
 def l1(y_true, y_pred):
     return K.mean(K.abs(y_pred - y_true))
 
 def create_model_gen(input_shape, output_channels):
-    model_input, model_output = base_model(image_size=input_shape, num_classes=output_channels)
+    model_input, model_output = build_gen(image_size=input_shape, output_channels=output_channels)
 
     model = tf.keras.Model(model_input, model_output)
     return model
@@ -39,6 +39,7 @@ def create_model_gan(input_shape, generator, discriminator):
 
 def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentum, loss_weights):
     optimizer = Adam(lr=lr, beta_1=momentum)
+    optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
     model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
     model_gen.compile(loss=mean_absolute_error, optimizer=optimizer)
@@ -62,13 +63,13 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 if __name__ == '__main__':
     EPOCHS = 100
     BATCH_SIZE = 1
-    LEARNING_RATE = 0.0002
+    LEARNING_RATE = 0.00002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 10
-    INPUT_SHAPE_GEN = (512, 512, 1)
-    INPUT_SHAPE_DIS = (512, 512, 3)
-    GEN_OUTPUT_CHANNEL = 2
+    INPUT_SHAPE_GEN = (256, 256, 1)
+    INPUT_SHAPE_DIS = (256, 256, 4)
+    GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
     WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
     WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis.h5'
@@ -113,41 +114,50 @@ if __name__ == '__main__':
             y = yuv[:, :, :, 0]
             y = tf.cast(y, tf.float32)
             y *= 255.
-            y = (y / 127.5) - 1.0
+            # y = (y / 127.5) - 1.0
+            y /= 255.
             y = tf.expand_dims(y, axis=-1)
 
             u = yuv[:, :, :, 1]
             u = tf.cast(u, tf.float32)
             u = (u + 0.5) * 255.
-            u = (u / 127.5) - 1.0
+            # u = (u / 127.5) - 1.0
+            u /= 255.
             u = tf.expand_dims(u, axis=-1)
 
             v = yuv[:, :, :, 2]
             v = tf.cast(v, tf.float32)
             v = (v + 0.5) * 255.
-            v = (v / 127.5) - 1.0
+            # v = (v / 127.5) - 1.0
+            v /= 255.
             v = tf.expand_dims(v, axis=-1)
 
-            uv = tf.concat([u, v], axis=-1)
+            yuv = tf.concat([y, u, v], axis=-1)
 
-            pred_uv = model_gen.predict(y)
+            pred_yuv = model_gen.predict(y)
 
-            pred_u = pred_uv[0][:, :, 0]
-            pred_v = pred_uv[0][:, :, 1]
+            y = yuv[0][:, :, 0]
+            u = yuv[0][:, :, 1]
+            v = yuv[0][:, :, 2]
 
-            y = y[0]
-            u = u[0]
-            v = v[0]
-
-            y = (y + 1) * 127.5
+            y *= 255.
             y = (y / 255.)
+            y = tf.expand_dims(y, -1)
 
-            pred_u = (pred_u + 1) * 127.5
+            pred_y = pred_yuv[0][:, :, 0]
+            pred_u = pred_yuv[0][:, :, 1]
+            pred_v = pred_yuv[0][:, :, 2]
+
+            pred_y *= 255.
+            pred_y /= 255.
+
+            pred_u *= 255.
             pred_u = (pred_u / 255.) - 0.5
 
-            pred_v = (pred_v + 1) * 127.5
+            pred_v *= 255.
             pred_v = (pred_v / 255.) - 0.5
 
+            pred_y = tf.expand_dims(pred_y, -1)
             pred_u = tf.expand_dims(pred_u, -1)
             pred_v = tf.expand_dims(pred_v, -1)
 
@@ -156,11 +166,16 @@ if __name__ == '__main__':
             pred_yuv = tf.image.yuv_to_rgb(pred_yuv)
 
 
-            u = (u + 1) * 127.5
+
+            u *= 255.
             u = (u / 255.) - 0.5
 
-            v = (v + 1) * 127.5
+            v *= 255.
             v = (v / 255.) - 0.5
+
+
+            u = tf.expand_dims(u, -1)
+            v = tf.expand_dims(v, -1)
 
 
             gt_yuv = tf.concat([y, u, v], axis=-1)

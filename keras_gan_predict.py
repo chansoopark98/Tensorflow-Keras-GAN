@@ -131,22 +131,23 @@ if __name__ == '__main__':
         y = yuv[:, :, :, 0]
         y = tf.cast(y, tf.float32)
         y *= 255.
-        # y = (y / 127.5) - 1.0
-        y /= 255.
+        y = (y / 127.5) - 1.0
+        # y /= 255.
+
         y = tf.expand_dims(y, axis=-1)
 
         u = yuv[:, :, :, 1]
         u = tf.cast(u, tf.float32)
         u = (u + 0.5) * 255.
-        # u = (u / 127.5) - 1.0
-        u /= 255.
+        u = (u / 127.5) - 1.0
+        # u /= 255.
         u = tf.expand_dims(u, axis=-1)
 
         v = yuv[:, :, :, 2]
         v = tf.cast(v, tf.float32)
         v = (v + 0.5) * 255.
-        # v = (v / 127.5) - 1.0
-        v /= 255.
+        v = (v / 127.5) - 1.0
+        # v /= 255.
         v = tf.expand_dims(v, axis=-1)
 
         uv = tf.concat([u, v], axis=-1)
@@ -156,13 +157,19 @@ if __name__ == '__main__':
         y = y[0]
         u =u[0]
         v =v[0]
+
+        y = (y + 1.0) * 127.5
+        y /= 255.
+
         pred_u = pred_yuv[0][:, :, 0]
         pred_v = pred_yuv[0][:, :, 1]
 
-        pred_u *= 255.
+        # pred_u *= 255.
+        pred_u = (pred_u + 1.0) * 127.5
         pred_u = (pred_u / 255.) - 0.5
 
-        pred_v *= 255.
+        # pred_v *= 255.
+        pred_v = (pred_v + 1.0) * 127.5
         pred_v = (pred_v / 255.) - 0.5
 
         pred_u = tf.expand_dims(pred_u, -1)
@@ -174,13 +181,13 @@ if __name__ == '__main__':
 
 
 
-        u *= 255.
+        # u *= 255.
+        u = (u + 1.0) * 127.5
         u = (u / 255.) - 0.5
 
-        v *= 255.
+        # v *= 255.
+        v = (v + 1.0) * 127.5
         v = (v / 255.) - 0.5
-
-
 
         gt_yuv = tf.concat([y, u, v], axis=-1)
         gt_yuv = tf.image.yuv_to_rgb(gt_yuv)

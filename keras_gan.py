@@ -55,13 +55,15 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
         optimizer=optimizer
     )
 
+    model_gan.summary()
+
     model_dis.trainable = True
     model_dis.compile(loss=binary_crossentropy, optimizer=optimizer)
 
     return model_gen, model_dis, model_gan
 
 if __name__ == '__main__':
-    EPOCHS = 200
+    EPOCHS = 100
     BATCH_SIZE = 32
     # LEARNING_RATE = 0.0005
     LEARNING_RATE = 0.0002
@@ -123,22 +125,22 @@ if __name__ == '__main__':
             y = yuv[:, :, :, 0]
             y = tf.cast(y, tf.float32)
             y *= 255.
-            # y = (y / 127.5) - 1.0
-            y /= 255.
+            y = (y / 127.5) - 1.0
+            # y /= 255.
             y = tf.expand_dims(y, axis=-1)
 
             u = yuv[:, :, :, 1]
             u = tf.cast(u, tf.float32)
             u = (u + 0.5) * 255.
-            # u = (u / 127.5) - 1.0
-            u /= 255.
+            u = (u / 127.5) - 1.0
+            # u /= 255.
             u = tf.expand_dims(u, axis=-1)
 
             v = yuv[:, :, :, 2]
             v = tf.cast(v, tf.float32)
             v = (v + 0.5) * 255.
-            # v = (v / 127.5) - 1.0
-            v /= 255.
+            v = (v / 127.5) - 1.0
+            # v /= 255.
             v = tf.expand_dims(v, axis=-1)
 
             uv = tf.concat([u, v], axis=-1)

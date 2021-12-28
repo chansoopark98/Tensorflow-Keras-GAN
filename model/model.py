@@ -1,9 +1,9 @@
 from model.EfficientNetV2 import EfficientNetV2S
-# from model.ResNest import resnest
+from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
     UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout, concatenate,
-    DepthwiseConv2D,  ZeroPadding2D)
+    DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose)
 from tensorflow.keras.activations import tanh, relu
 import tensorflow as tf
 from tensorflow.keras.models import Model
@@ -102,8 +102,25 @@ def Conv3x3(x, channel, rate, activation='swish'):
 
     return x
 
-def create_conv(filters, kernel_size, inputs, name=None, bn=True, dropout=0., padding='same', activation='relu'):
-    conv = Conv2D(filters, kernel_size, padding=padding,
+def create_conv(filters, kernel_size, inputs, name=None, bn=True, dropout=0., padding='same', activation='relu', stride=1):
+    conv = Conv2D(filters, kernel_size, padding=padding, strides=stride,
+                  kernel_initializer='he_normal', name=name)(inputs)
+
+    if bn:
+        conv = BatchNormalization()(conv)
+
+    if activation == 'leakyrelu':
+        conv = LeakyReLU()(conv)
+    else:
+        conv = Activation(activation)(conv)
+
+    if dropout != 0:
+        conv = Dropout(dropout)(conv)
+
+    return conv
+
+def create_deconv(filters, kernel_size, inputs, name=None, bn=True, dropout=0., padding='same', activation='relu'):
+    conv = Conv2DTranspose(filters, kernel_size, padding=padding, strides=(2, 2),
                   kernel_initializer='he_normal', name=name)(inputs)
 
     if bn:
@@ -156,67 +173,111 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
     return x
 
 def build_generator(input_shape, output_channels):
-    inputs = Input(input_shape)
-    conv1 = create_conv(64, (3, 3), inputs, 'conv1_1', activation='leakyrelu')
-    conv1 = create_conv(64, (3, 3), conv1, 'conv1_2', activation='leakyrelu')
-    pool1 = MaxPooling2D((2, 2))(conv1)
+    # inputs = Input(input_shape)
+    # conv1 = create_conv(64, (3, 3), inputs, 'conv1_1', activation='leakyrelu')
+    # conv1 = create_conv(64, (3, 3), conv1, 'conv1_2', activation='leakyrelu')
+    # pool1 = MaxPooling2D((2, 2))(conv1)
+    #
+    # conv2 = create_conv(128, (3, 3), pool1, 'conv2_1', activation='leakyrelu')
+    # conv2 = create_conv(128, (3, 3), conv2, 'conv2_2', activation='leakyrelu')
+    # pool2 = MaxPooling2D((2, 2))(conv2)
+    #
+    # conv3 = create_conv(256, (3, 3), pool2, 'conv3_1', activation='leakyrelu')
+    # conv3 = create_conv(256, (3, 3), conv3, 'conv3_2', activation='leakyrelu')
+    # pool3 = MaxPooling2D((2, 2))(conv3)
+    #
+    # conv4 = create_conv(512, (3, 3), pool3, 'conv4_1', activation='leakyrelu')
+    # conv4 = create_conv(512, (3, 3), conv4, 'conv4_2', activation='leakyrelu')
+    # pool4 = MaxPooling2D((2, 2))(conv4)
+    #
+    # conv5 = create_conv(1024, (3, 3), pool4, 'conv5_1', activation='leakyrelu')
+    # conv5 = create_conv(1024, (3, 3), conv5, 'conv5_2', activation='leakyrelu')
+    #
+    # up6 = create_conv(512, (2, 2), UpSampling2D((2, 2))(conv5), 'up6')
+    # merge6 = concatenate([conv4, up6], axis=3)
+    # conv6 = create_conv(512, (3, 3), merge6, 'conv6_1', activation='relu')
+    # conv6 = create_conv(512, (3, 3), conv6, 'conv6_2', activation='relu')
+    #
+    # up7 = create_conv(256, (2, 2), UpSampling2D((2, 2))(conv6), 'up7')
+    # merge7 = concatenate([conv3, up7], axis=3)
+    # conv7 = create_conv(256, (3, 3), merge7, 'conv7_1', activation='relu')
+    # conv7 = create_conv(256, (3, 3), conv7, 'conv7_2', activation='relu')
+    #
+    # up8 = create_conv(128, (2, 2), UpSampling2D((2, 2))(conv7), 'up8')
+    # merge8 = concatenate([conv2, up8], axis=3)
+    # conv8 = create_conv(128, (3, 3), merge8, 'conv8_1', activation='relu')
+    # conv8 = create_conv(128, (3, 3), conv8, 'conv8_2', activation='relu')
+    #
+    # up9 = create_conv(64, (2, 2), UpSampling2D((2, 2))(conv8))
+    # merge9 = concatenate([conv1, up9], axis=3)
+    # conv9 = create_conv(64, (3, 3), merge9, 'conv9_1', activation='relu')
+    # conv9 = create_conv(64, (3, 3), conv9, 'conv9_2', activation='relu')
+    # conv9 = Conv2D(output_channels, (1, 1), padding='same', name='conv9_3')(conv9)
 
-    conv2 = create_conv(128, (3, 3), pool1, 'conv2_1', activation='leakyrelu')
-    conv2 = create_conv(128, (3, 3), conv2, 'conv2_2', activation='leakyrelu')
-    pool2 = MaxPooling2D((2, 2))(conv2)
+    """ ResNest-101"""
+    base = resnest.resnest50(input_shape=input_shape, include_top=False, weights=None, input_tensor=None,
+                               classes=1000)
+    base.summary()
+    # c1 = base.get_layer('stem_act3').output  # 1/2 @ 128 ResNest-101
+    c1 = base.get_layer('stem_act3').output  # 1/2 @ 64 ResNest-50 128x128
+    c2 = base.get_layer('stage1_block3_shorcut_act').output  # 1/4 @ 256 64x64
+    c3 = base.get_layer('stage2_block4_shorcut_act').output  # 1/8 @ 512 32x32
+    # c4 = base.get_layer('stage3_block23_shorcut_act').output  # 1/16 @ 1024 ResNest-101
+    c4 = base.get_layer('stage3_block6_shorcut_act').output  # 1/16 @ 1024 16x16
+    # x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048 ResNest-101
+    x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048 8x8
 
-    conv3 = create_conv(256, (3, 3), pool2, 'conv3_1', activation='leakyrelu')
-    conv3 = create_conv(256, (3, 3), conv3, 'conv3_2', activation='leakyrelu')
-    pool3 = MaxPooling2D((2, 2))(conv3)
+    x = create_conv(filters=512, kernel_size=3, inputs=x) # 8x8 512
 
-    conv4 = create_conv(512, (3, 3), pool3, 'conv4_1', activation='leakyrelu')
-    conv4 = create_conv(512, (3, 3), conv4, 'conv4_2', activation='leakyrelu')
-    pool4 = MaxPooling2D((2, 2))(conv4)
+    model_input = base.input
 
-    conv5 = create_conv(1024, (3, 3), pool4, 'conv5_1', activation='leakyrelu')
-    conv5 = create_conv(1024, (3, 3), conv5, 'conv5_2', activation='leakyrelu')
+    ### Decoder C4 branch ###
+    x = create_deconv(filters=512, kernel_size=3, inputs=x)
+    x = Concatenate()([x, c4])
+    x = create_conv(filters=512, kernel_size=3, inputs=x) # 16x16 512
 
-    up6 = create_conv(512, (2, 2), UpSampling2D((2, 2))(conv5), 'up6')
-    merge6 = concatenate([conv4, up6], axis=3)
-    conv6 = create_conv(512, (3, 3), merge6, 'conv6_1', activation='relu')
-    conv6 = create_conv(512, (3, 3), conv6, 'conv6_2', activation='relu')
+    ### Decoder C3 branch ###
+    x = create_deconv(filters=256, kernel_size=3, inputs=x)
+    x = Concatenate()([x, c3])  # 64
+    x = create_conv(filters=256, kernel_size=3, inputs=x) #32x32 256
 
-    up7 = create_conv(256, (2, 2), UpSampling2D((2, 2))(conv6), 'up7')
-    merge7 = concatenate([conv3, up7], axis=3)
-    conv7 = create_conv(256, (3, 3), merge7, 'conv7_1', activation='relu')
-    conv7 = create_conv(256, (3, 3), conv7, 'conv7_2', activation='relu')
+    ### Decoder C2 branch ###
+    x = create_deconv(filters=128, kernel_size=3, inputs=x)
+    x = Concatenate()([x, c2])  # 64
+    x = create_conv(filters=128, kernel_size=3, inputs=x) #64x64 128
 
-    up8 = create_conv(128, (2, 2), UpSampling2D((2, 2))(conv7), 'up8')
-    merge8 = concatenate([conv2, up8], axis=3)
-    conv8 = create_conv(128, (3, 3), merge8, 'conv8_1', activation='relu')
-    conv8 = create_conv(128, (3, 3), conv8, 'conv8_2', activation='relu')
+    ### Decoder C1 branch ###
+    x = create_deconv(filters=64, kernel_size=3, inputs=x)
+    x = Concatenate()([x, c1])  # 64
+    x = create_conv(filters=64, kernel_size=3, inputs=x) #128x128 64
 
-    up9 = create_conv(64, (2, 2), UpSampling2D((2, 2))(conv8))
-    merge9 = concatenate([conv1, up9], axis=3)
-    conv9 = create_conv(64, (3, 3), merge9, 'conv9_1', activation='relu')
-    conv9 = create_conv(64, (3, 3), conv9, 'conv9_2', activation='relu')
-    conv9 = Conv2D(output_channels, (1, 1), padding='same', name='conv9_3')(conv9)
+    ### Classifier ###
+    x = create_deconv(filters=64, kernel_size=3, inputs=x)
+    model_output = create_conv(filters=2, kernel_size=3, inputs=x, activation='tanh')  # 128x128 64
 
-    return inputs, conv9
+    return model_input, model_output
 
 def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
 
     inputs = Input(shape=image_size)
-    conv1 = create_conv(64, (3, 3), inputs, 'conv1', activation='leakyrelu', dropout=.8)
-    pool1 = MaxPooling2D((2, 2))(conv1)
+    stem = create_conv(32, (3, 3), inputs, 'dis_stem', activation='leakyrelu', dropout=0., bn=False, stride=2) # 256x256
 
-    conv2 = create_conv(128, (3, 3), pool1, 'conv2', activation='leakyrelu', dropout=.8)
-    pool2 = MaxPooling2D((2, 2))(conv2)
+    conv1_1 = create_conv(32, (1, 1), stem, 'conv1_1', activation='leakyrelu', dropout=.5, stride=1)
+    conv1_2 = create_conv(64, (3, 3), conv1_1, 'conv1_2', activation='leakyrelu', dropout=.5, stride=2) # 128x128
 
-    conv3 = create_conv(256, (3, 3), pool2, 'conv3', activation='leakyrelu', dropout=.8)
-    pool3 = MaxPooling2D((2, 2))(conv3)
+    conv2_1 = create_conv(64, (1, 1), conv1_2, 'conv2_1', activation='leakyrelu', dropout=.5, stride=1)
+    conv2_2 = create_conv(128, (3, 3), conv2_1, 'conv2_2', activation='leakyrelu', dropout=.5, stride=2) # 64x64
 
-    conv4 = create_conv(512, (3, 3), pool3, 'conv4', activation='leakyrelu', dropout=.8)
-    pool4 = MaxPooling2D((2, 2))(conv4)
+    conv3_1 = create_conv(128, (1, 1), conv2_2, 'conv3_1', activation='leakyrelu', dropout=.5, stride=1)
+    conv3_2 = create_conv(256, (3, 3), conv3_1, 'conv3_2', activation='leakyrelu', dropout=.5, stride=2) # 32x32
 
-    conv5 = create_conv(512, (3, 3), pool4, 'conv5', activation='leakyrelu', dropout=.8)
+    conv4_1 = create_conv(256, (1, 1), conv3_2, 'conv4_1', activation='leakyrelu', dropout=.5, stride=1)
+    conv4_2 = create_conv(512, (3, 3), conv4_1, 'conv4_2', activation='leakyrelu', dropout=.5, stride=2) # 16x16
 
-    flat = Flatten()(conv5)
+    conv5_1 = create_conv(512, (1, 1), conv4_2, 'conv5_1', activation='leakyrelu', dropout=.5, stride=1)
+    conv5_2 = create_conv(512, (3, 3), conv5_1, 'conv5_2', activation='leakyrelu', dropout=.5, stride=2)  # 8x8
+
+    flat = Flatten()(conv5_2)
     dense6 = Dense(1, activation='sigmoid')(flat)
 
     return inputs, dense6

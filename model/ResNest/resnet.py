@@ -1,6 +1,7 @@
 import tensorflow as tf
 from .splat import *
-
+BN_MOMENTUM = 0.8
+BN_EPSILON = 0.001
 
 def resnest_block(x, n_filter, stride_size=1, dilation=1, group_size=1, radix=1, block_width=64, avd=False,
                   avd_first=False, downsample=None, dropout_rate=0., expansion=4, is_first=False, stage=1, index=1):
@@ -9,7 +10,7 @@ def resnest_block(x, n_filter, stride_size=1, dilation=1, group_size=1, radix=1,
 
     out = tf.keras.layers.Conv2D(group_width, 1, padding="same", use_bias=False, kernel_initializer="he_normal",
                                  name="stage{0}_block{1}_conv1".format(stage, index))(x)
-    out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5,
+    out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON,
                                              name="stage{0}_block{1}_bn1".format(stage, index))(out)
     if 0 < dropout_rate:
         out = tf.keras.layers.Dropout(dropout_rate, name="stage{0}_block{1}_dropout1".format(stage, index))(out)
@@ -29,7 +30,7 @@ def resnest_block(x, n_filter, stride_size=1, dilation=1, group_size=1, radix=1,
         out = tf.keras.layers.Conv2D(group_width, 3, strides=stride_size, dilation_rate=dilation, padding="same",
                                      use_bias=False, kernel_initializer="he_normal",
                                      name="stage{0}_block{1}_conv2".format(stage, index))(out)
-        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5,
+        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON,
                                                  name="stage{0}_block{1}_bn2".format(stage, index))(out)
         if 0 < dropout_rate:
             out = tf.keras.layers.Dropout(dropout_rate, name="stage{0}_block{1}_dropout2".format(stage, index))(out)
@@ -41,7 +42,7 @@ def resnest_block(x, n_filter, stride_size=1, dilation=1, group_size=1, radix=1,
     out = tf.keras.layers.Conv2D(n_filter * expansion, 1, padding="same", use_bias=False,
                                  kernel_initializer="he_normal", name="stage{0}_block{1}_conv3".format(stage, index))(
         out)
-    out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5,
+    out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON,
                                              name="stage{0}_block{1}_bn3".format(stage, index))(out)
     if 0 < dropout_rate:
         out = tf.keras.layers.Dropout(dropout_rate, name="stage{0}_block{1}_dropout3".format(stage, index))(out)
@@ -68,13 +69,13 @@ def resnest_module(x, n_filter, n_block, stride_size=1, dilation=1, group_size=1
             downsample = tf.keras.layers.Conv2D(n_filter * expansion, 1, padding="same", use_bias=False,
                                                 kernel_initializer="he_normal",
                                                 name="stage{0}_downsample_conv1".format(stage))(downsample)
-            downsample = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5,
+            downsample = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON,
                                                             name="stage{0}_downsample_bn1".format(stage))(downsample)
         else:
             downsample = tf.keras.layers.Conv2D(n_filter * expansion, 1, strides=stride_size, padding="same",
                                                 use_bias=False, kernel_initializer="he_normal",
                                                 name="stage{0}_downsample_conv1".format(stage))(x)
-            downsample = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5,
+            downsample = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON,
                                                             name="stage{0}_downsample_bn1".format(stage))(downsample)
 
     if dilation == 1 or dilation == 2 or dilation == 4:
@@ -95,20 +96,20 @@ def ResNet(x, stack, n_class=1000, include_top=True, dilation=1, group_size=1, r
     if deep_stem:
         out = tf.keras.layers.Conv2D(stem_width, 3, strides=2, padding="same", use_bias=False,
                                      kernel_initializer="he_normal", name="stem_conv1")(x)
-        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5, name="stem_bn1")(out)
+        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON, name="stem_bn1")(out)
         out = tf.keras.layers.Activation("relu", name="stem_act1")(out)
         out = tf.keras.layers.Conv2D(stem_width, 3, padding="same", use_bias=False, kernel_initializer="he_normal",
                                      name="stem_conv2")(out)
-        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5, name="stem_bn2")(out)
+        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON, name="stem_bn2")(out)
         out = tf.keras.layers.Activation("relu", name="stem_act2")(out)
         out = tf.keras.layers.Conv2D(stem_width * 2, 3, padding="same", use_bias=False, kernel_initializer="he_normal",
                                      name="stem_conv3")(out)
-        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5, name="stem_bn3")(out)
+        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON, name="stem_bn3")(out)
         out = tf.keras.layers.Activation("relu", name="stem_act3")(out)
     else:
         out = tf.keras.layers.Conv2D(64, 7, strides=2, padding="same", use_bias=False, kernel_initializer="he_normal",
                                      name="stem_conv1")(x)
-        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=0.9, epsilon=1e-5, name="stem_bn1")(out)
+        out = tf.keras.layers.BatchNormalization(axis=-1, momentum=BN_MOMENTUM, epsilon=BN_EPSILON, name="stem_bn1")(out)
         out = tf.keras.layers.Activation("relu", name="stem_act1")(out)
     out = tf.keras.layers.MaxPool2D(3, strides=2, padding="same", name="stem_pooling")(out)
 

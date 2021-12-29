@@ -124,7 +124,7 @@ if __name__ == '__main__':
         shape = img.shape
         # img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
         img = tf.image.resize_with_pad(img, 256, 256)
-        img /= 255
+        img /= 255.
         img = tf.cast(img, tf.float32)
         yuv = tf.image.rgb_to_yuv(img)
 

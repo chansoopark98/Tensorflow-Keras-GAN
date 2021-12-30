@@ -104,7 +104,7 @@ def Conv3x3(x, channel, rate, activation='swish'):
 
 def create_conv(filters, kernel_size, inputs, name=None, bn=True, bn_momentum=0.8,
                 dropout=0., padding='same', activation='relu', stride=1):
-    conv = Conv2D(filters, kernel_size, padding=padding, strides=stride,
+    conv = Conv2D(filters, kernel_size, padding=padding, strides=stride, use_bias=False,
                   kernel_initializer='he_normal', name=name)(inputs)
 
     if bn:
@@ -255,7 +255,7 @@ def build_generator(input_shape, output_channels):
     x = create_conv(filters=64, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) #128x128 64
 
     ### Classifier ###
-    x = create_deconv(filters=32, kernel_size=3, inputs=x)
+    x = create_deconv(filters=64, kernel_size=3, inputs=x)
     model_output = create_conv(filters=2, kernel_size=3, inputs=x, activation='tanh', bn=False)  # 128x128 64
 
     return model_input, model_output

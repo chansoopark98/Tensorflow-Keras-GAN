@@ -24,64 +24,42 @@ if __name__ == "__main__":
         img = tf.cast(img, tf.uint8)
         img = img[0]
         img = tf.image.resize(img, (512, 512))
-        img /= 255
-        img = tf.cast(img, tf.float32)
-        yuv = tf.image.rgb_to_yuv(img)
-        # yuv *= 255
+        img /= 255.
 
-        y = yuv[:, :, 0]
-        y = tf.cast(y, tf.float32)
-        y = y.numpy()
-        y *= 255.
-        # y = (y / 127.5) - 1.0
-        y /= 255.
-        y = tf.expand_dims(y, axis=-1)
+        lab = tfio.experimental.color.rgb_to_lab(img)
 
-        u = yuv[:, :, 1]
-        u = tf.cast(u, tf.float32)
-        u = u.numpy()
-        u = (u + 0.5) * 255.
-        # u = (u / 127.5) - 1.0
-        u /= 255.
-        u = tf.expand_dims(u, axis=-1)
+        l = lab[:, :, 0] # normalize 0 ~ 100 to -1 ~ 1
+        l = (l - 50) / 50.
+        l *= 100.
 
-        v = yuv[:, :, 2]
-        v = tf.cast(v, tf.float32)
-        v = v.numpy()
-        v = (v + 0.5) * 255.
-        # v = (v / 127.5) - 1.0
-        v /= 255.
-        v = tf.expand_dims(v, axis=-1)
+        a = lab[:, :, 1]
+        a /= 128.
+        a *= 128.
 
-        # 복원
-        # y = (y + 1) * 127.5
-        y *= 255.
-        y = (y / 255.)
+        b = lab[:, :, 2]
+        b /= 128.
+        b *= 128.
 
-        # u = (u + 1) * 127.5
-        u *= 255.
-        u = (u / 255.) - 0.5
+        l = tf.expand_dims(l, axis=-1)
+        a = tf.expand_dims(a, axis=-1)
+        b = tf.expand_dims(b, axis=-1)
 
-        # v = (v + 1) * 127.5
-        v *= 255.
-        v = (v / 255.) - 0.5
+        lab = tf.concat([l, a, b], axis=-1)
 
-        yuv = tf.concat([y, u, v], axis=-1)
-        # yuv /= 255.
-        yuv = tf.image.yuv_to_rgb(yuv)
-        # yuv = tf.cast(yuv, tf.int32)
+        lab = tfio.experimental.color.lab_to_rgb(lab)
+
         rows = 1
         cols = 2
         fig = plt.figure()
 
         ax0 = fig.add_subplot(rows, cols, 1)
-        ax0.imshow(yuv)
-        ax0.set_title('0 to 1')
+        ax0.imshow(lab)
+        ax0.set_title('rgb->lab->rgb')
         ax0.axis("off")
 
         ax0 = fig.add_subplot(rows, cols, 2)
-        ax0.imshow(yuv)
-        ax0.set_title('0 to 255')
+        ax0.imshow(img)
+        ax0.set_title('original')
         ax0.axis("off")
 
         # ax1 = fig.add_subplot(rows, cols, 2)

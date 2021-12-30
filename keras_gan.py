@@ -9,6 +9,7 @@ import tensorflow.keras.backend as K
 from tqdm import tqdm
 import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
+import tensorflow_io as tfio
 
 
 def eacc(y_true, y_pred):
@@ -98,6 +99,10 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
+    # model_gen.load_weights(WEIGHTS_GEN + '25.h5')
+    # model_dis.load_weights(WEIGHTS_DIS + '25.h5')
+    # model_gan.load_weights(WEIGHTS_GAN + '25.h5')
+
     train_data = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
@@ -134,47 +139,39 @@ if __name__ == '__main__':
             img = tf.cast(features['image'], tf.uint8)
             shape = img.shape
 
-            img = tf.cast(img, tf.uint8)
+            img = tf.cast(img, tf.float32)
             img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
 
-            # # data augmentation
-            # if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-            #     img = tf.image.flip_left_right(img)
+            # data augmentation
+            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+                img = tf.image.flip_left_right(img)
 
             img /= 255.
-            img = tf.cast(img, tf.float32)
-            yuv = tf.image.rgb_to_yuv(img)
 
-            y = yuv[:, :, :, 0]
-            y = tf.cast(y, tf.float32)
-            y *= 255.
-            y = (y / 127.5) - 1.0
-            # y /= 255.
-            y = tf.expand_dims(y, axis=-1)
+            lab = tfio.experimental.color.rgb_to_lab(img)
 
-            u = yuv[:, :, :, 1]
-            u = tf.cast(u, tf.float32)
-            u = (u + 0.5) * 255.
-            u = (u / 127.5) - 1.0
-            # u /= 255.
-            u = tf.expand_dims(u, axis=-1)
+            l = lab[:, :, :, 0]
+            l = (l - 50) / 50.
 
-            v = yuv[:, :, :, 2]
-            v = tf.cast(v, tf.float32)
-            v = (v + 0.5) * 255.
-            v = (v / 127.5) - 1.0
-            # v /= 255.
-            v = tf.expand_dims(v, axis=-1)
+            a = lab[:, :, :, 1]
+            a /= 128.
 
-            uv = tf.concat([u, v], axis=-1)
+            b = lab[:, :, :, 2]
+            b /= 128.
+
+            l = tf.expand_dims(l, axis=-1)
+            a = tf.expand_dims(a, axis=-1)
+            b = tf.expand_dims(b, axis=-1)
+
+            ab = tf.concat([a, b], axis=-1)
 
             if batch_counter % 2 == 0:
                 toggle = not toggle
                 if toggle:
-                    x_dis = tf.concat((model_gen.predict(y), y), axis=3)
+                    x_dis = tf.concat((model_gen.predict(l), l), axis=3)
                     y_dis = tf.zeros((shape[0], 1)) # TODO: np to tf
                 else:
-                    x_dis = tf.concat((uv, y), axis=3)
+                    x_dis = tf.concat((ab, l), axis=3)
                     # y_dis = tf.ones((shape[0], 1))
                     y_dis = tf.ones((shape[0], 1)) * 0.9
                     # y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
@@ -182,9 +179,9 @@ if __name__ == '__main__':
                 dis_res = model_dis.train_on_batch(x_dis, y_dis)
 
             model_dis.trainable = False
-            x_gen = y
+            x_gen = l
             y_gen = tf.ones((shape[0], 1))
-            x_output = uv
+            x_output = ab
             gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
             model_dis.trainable = True
 
@@ -199,64 +196,50 @@ if __name__ == '__main__':
         # validation
         for img in demo_test:
             img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
-
-            img /= 255.
             img = tf.cast(img, tf.float32)
-            yuv = tf.image.rgb_to_yuv(img)
+            img /= 255.
 
-            y = yuv[:, :, :, 0]
-            y = tf.cast(y, tf.float32)
-            y *= 255.
-            y = (y / 127.5) - 1.0
-            # y /= 255.
-            y = tf.expand_dims(y, axis=-1)
+            lab = tfio.experimental.color.rgb_to_lab(img)
 
-            u = yuv[:, :, :, 1]
-            u = tf.cast(u, tf.float32)
-            u = (u + 0.5) * 255.
-            u = (u / 127.5) - 1.0
-            # u /= 255.
-            u = tf.expand_dims(u, axis=-1)
+            l = lab[:, :, :, 0]
+            l = (l - 50) / 50.
 
-            v = yuv[:, :, :, 2]
-            v = tf.cast(v, tf.float32)
-            v = (v + 0.5) * 255.
-            v = (v / 127.5) - 1.0
-            # v /= 255.
-            v = tf.expand_dims(v, axis=-1)
+            a = lab[:, :, :, 1]
+            a /= 128.
 
-            uv = tf.concat([u, v], axis=-1)
+            b = lab[:, :, :, 2]
+            b /= 128.
 
-            model_gen.predict(y)
+            l = tf.expand_dims(l, axis=-1)
+            a = tf.expand_dims(a, axis=-1)
+            b = tf.expand_dims(b, axis=-1)
 
-            pred_yuv = model_gen.predict(y)
-            for i in range(len(pred_yuv)):
-                y = y[i]
-                u = u[i]
-                v = v[i]
+            ab = tf.concat([a, b], axis=-1)
 
-                y = (y + 1.0) * 127.5
-                y /= 255.
+            model_gen.predict(l)
 
-                pred_u = pred_yuv[i][:, :, 0]
-                pred_v = pred_yuv[i][:, :, 1]
+            pred_ab = model_gen.predict(l)
+            for i in range(len(pred_ab)):
+                batch_l = l[i]
+                batch_a = a[i]
+                batch_b = b[i]
 
-                # pred_u *= 255.
-                pred_u = (pred_u + 1.0) * 127.5
-                pred_u = (pred_u / 255.) - 0.5
+                l = (l * 50) + 50
 
-                # pred_v *= 255.
-                pred_v = (pred_v + 1.0) * 127.5
-                pred_v = (pred_v / 255.) - 0.5
+                pred_a = pred_ab[i][:, :, 0]
+                pred_b = pred_ab[i][:, :, 1]
 
-                pred_u = tf.expand_dims(pred_u, -1)
-                pred_v = tf.expand_dims(pred_v, -1)
+                pred_a *= 128.
+                pred_b *= 128.
 
-                pred_yuv = tf.concat([y, pred_u, pred_v], axis=-1)
+                pred_a = tf.expand_dims(pred_a, -1)
+                pred_b = tf.expand_dims(pred_b, -1)
 
-                pred_yuv = tf.image.yuv_to_rgb(pred_yuv)
+                pred_lab = tf.concat([batch_l, pred_a, pred_b], axis=-1)
 
-                plt.imshow(pred_yuv)
+                pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
+
+                plt.imshow(pred_lab)
                 os.makedirs(demo_path + str(epoch), exist_ok=True)
 
                 plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=300)

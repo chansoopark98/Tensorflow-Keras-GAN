@@ -140,8 +140,8 @@ if __name__ == '__main__':
             batch_b = pred_ab[i][:, :, 1]
 
             l = (l * 50) + 50
-            batch_a *= 127.5
-            batch_b *= 127.5
+            batch_a *= 128.
+            batch_b *= 128.
 
             batch_l = tf.expand_dims(l[i], -1)
             batch_a = tf.expand_dims(batch_a, -1)

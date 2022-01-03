@@ -104,7 +104,12 @@ def Conv3x3(x, channel, rate, activation='swish'):
 
 def create_conv(filters, kernel_size, inputs, name=None, bn=True, bn_momentum=0.8,
                 dropout=0., padding='same', activation='relu', stride=1):
-    conv = Conv2D(filters, kernel_size, padding=padding, strides=stride, use_bias=False,
+    if bn == True:
+        bias = False
+    else:
+        bias = True
+
+    conv = Conv2D(filters, kernel_size, padding=padding, strides=stride, use_bias=bias,
                   kernel_initializer='he_normal', name=name)(inputs)
 
     if bn:
@@ -120,9 +125,13 @@ def create_conv(filters, kernel_size, inputs, name=None, bn=True, bn_momentum=0.
 
     return conv
 
-def create_deconv(filters, kernel_size, inputs, name=None, bn=True, dropout=0.,
+def create_deconv(filters, kernel_size, inputs, name=None, bn=False, dropout=0.,
                   bn_momentum=0.8, padding='same', activation='relu'):
-    conv = Conv2DTranspose(filters, kernel_size, padding=padding, strides=(2, 2),
+    if bn == True:
+        bias = False
+    else:
+        bias = True
+    conv = Conv2DTranspose(filters, kernel_size, padding=padding, strides=(2, 2), use_bias=bias,
                   kernel_initializer='he_normal', name=name)(inputs)
 
     if bn:
@@ -175,47 +184,6 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
     return x
 
 def build_generator(input_shape, output_channels):
-    # inputs = Input(input_shape)
-    # conv1 = create_conv(64, (3, 3), inputs, 'conv1_1', activation='leakyrelu')
-    # conv1 = create_conv(64, (3, 3), conv1, 'conv1_2', activation='leakyrelu')
-    # pool1 = MaxPooling2D((2, 2))(conv1)
-    #
-    # conv2 = create_conv(128, (3, 3), pool1, 'conv2_1', activation='leakyrelu')
-    # conv2 = create_conv(128, (3, 3), conv2, 'conv2_2', activation='leakyrelu')
-    # pool2 = MaxPooling2D((2, 2))(conv2)
-    #
-    # conv3 = create_conv(256, (3, 3), pool2, 'conv3_1', activation='leakyrelu')
-    # conv3 = create_conv(256, (3, 3), conv3, 'conv3_2', activation='leakyrelu')
-    # pool3 = MaxPooling2D((2, 2))(conv3)
-    #
-    # conv4 = create_conv(512, (3, 3), pool3, 'conv4_1', activation='leakyrelu')
-    # conv4 = create_conv(512, (3, 3), conv4, 'conv4_2', activation='leakyrelu')
-    # pool4 = MaxPooling2D((2, 2))(conv4)
-    #
-    # conv5 = create_conv(1024, (3, 3), pool4, 'conv5_1', activation='leakyrelu')
-    # conv5 = create_conv(1024, (3, 3), conv5, 'conv5_2', activation='leakyrelu')
-    #
-    # up6 = create_conv(512, (2, 2), UpSampling2D((2, 2))(conv5), 'up6')
-    # merge6 = concatenate([conv4, up6], axis=3)
-    # conv6 = create_conv(512, (3, 3), merge6, 'conv6_1', activation='relu')
-    # conv6 = create_conv(512, (3, 3), conv6, 'conv6_2', activation='relu')
-    #
-    # up7 = create_conv(256, (2, 2), UpSampling2D((2, 2))(conv6), 'up7')
-    # merge7 = concatenate([conv3, up7], axis=3)
-    # conv7 = create_conv(256, (3, 3), merge7, 'conv7_1', activation='relu')
-    # conv7 = create_conv(256, (3, 3), conv7, 'conv7_2', activation='relu')
-    #
-    # up8 = create_conv(128, (2, 2), UpSampling2D((2, 2))(conv7), 'up8')
-    # merge8 = concatenate([conv2, up8], axis=3)
-    # conv8 = create_conv(128, (3, 3), merge8, 'conv8_1', activation='relu')
-    # conv8 = create_conv(128, (3, 3), conv8, 'conv8_2', activation='relu')
-    #
-    # up9 = create_conv(64, (2, 2), UpSampling2D((2, 2))(conv8))
-    # merge9 = concatenate([conv1, up9], axis=3)
-    # conv9 = create_conv(64, (3, 3), merge9, 'conv9_1', activation='relu')
-    # conv9 = create_conv(64, (3, 3), conv9, 'conv9_2', activation='relu')
-    # conv9 = Conv2D(output_channels, (1, 1), padding='same', name='conv9_3')(conv9)
-
     BN_MOMENTUM = 0.8
 
     """ ResNest-101"""
@@ -255,7 +223,7 @@ def build_generator(input_shape, output_channels):
     x = create_conv(filters=64, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) #128x128 64
 
     ### Classifier ###
-    x = create_deconv(filters=64, kernel_size=3, inputs=x)
+    x = create_deconv(filters=64, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM)
     model_output = create_conv(filters=2, kernel_size=3, inputs=x, activation='tanh', bn=False)  # 128x128 64
 
     return model_input, model_output
@@ -264,10 +232,10 @@ def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
     inputs = Input(shape=image_size)
 
     conv1 = create_conv(32, (3, 3), inputs, 'conv1', activation='leakyrelu', dropout=.25, bn=False, stride=2) # 256x256
-    conv2 = create_conv(64, (3, 3), conv1, 'conv2', activation='leakyrelu', dropout=.25, stride=2) # 128x128
-    conv3 = create_conv(128, (3, 3), conv2, 'conv3', activation='leakyrelu', dropout=.25, stride=2) # 64x64
-    conv4 = create_conv(256, (3, 3), conv3, 'conv4', activation='leakyrelu', dropout=.25,  bn=False, stride=2) # 32x32
-    conv5 = create_conv(512, (3, 3), conv4, 'conv5', activation='leakyrelu', dropout=.25,  bn=False, stride=2) # 16x16
+    conv2 = create_conv(64, (3, 3), conv1, 'conv2', activation='leakyrelu', dropout=.25, bn=True, stride=2) # 128x128
+    conv3 = create_conv(128, (3, 3), conv2, 'conv3', activation='leakyrelu', dropout=.25, bn=True, stride=2) # 64x64
+    conv4 = create_conv(256, (3, 3), conv3, 'conv4', activation='leakyrelu', dropout=.25,  bn=True, stride=2) # 32x32
+    conv5 = create_conv(512, (3, 3), conv4, 'conv5', activation='leakyrelu', dropout=.25,  bn=True, stride=2) # 16x16
 
     flat = Flatten()(conv5)
     dense6 = Dense(1, activation='sigmoid')(flat)

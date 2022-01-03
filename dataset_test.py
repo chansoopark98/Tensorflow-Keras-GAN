@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from utils.datasets import Dataset
 import argparse
 import tensorflow_io as tfio
+from skimage import color
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", type=str, help="데이터셋 다운로드 디렉토리 설정", default='./datasets/')
@@ -26,19 +27,23 @@ if __name__ == "__main__":
         img = tf.image.resize(img, (512, 512))
         img /= 255.
 
-        lab = tfio.experimental.color.rgb_to_lab(img)
+        # lab = tfio.experimental.color.rgb_to_lab(img)
+        ten_lab = tfio.experimental.color.rgb_to_lab(img)
+        gray = tf.image.rgb_to_grayscale(img)
 
-        l = lab[:, :, 0] # normalize 0 ~ 100 to -1 ~ 1
+
+        l = ten_lab[:, :, 0] # normalize 0 ~ 100 to -1 ~ 1
         l = (l - 50) / 50.
-        l *= 100.
+        l = (l * 50) + 50
 
-        a = lab[:, :, 1]
-        a /= 128.
-        a *= 128.
 
-        b = lab[:, :, 2]
-        b /= 128.
-        b *= 128.
+        a = ten_lab[:, :, 1]
+        a /= 127.5
+        a *= 127.5
+
+        b = ten_lab[:, :, 2]
+        b /= 127.5
+        b *= 127.5
 
         l = tf.expand_dims(l, axis=-1)
         a = tf.expand_dims(a, axis=-1)

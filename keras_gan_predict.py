@@ -9,6 +9,7 @@ from tqdm import tqdm
 import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import os
+import tensorflow_io as tfio
 
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
@@ -89,7 +90,7 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    model_gen.load_weights('./checkpoints/YUV_GAN_Gen.h5', by_name=True)
+    model_gen.load_weights('./checkpoints/YUV_GAN_Gen_95.h5', by_name=True)
     train_data = tfds.load('CustomCelebahq',
                                 data_dir=DATASET_DIR, split='train[:25%]', shuffle_files=True)
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
@@ -110,11 +111,11 @@ if __name__ == '__main__':
     demo_test = demo_imgs.map(demo_prepare)
     demo_test = demo_test.batch(BATCH_SIZE)
     demo_steps = len(filenames) // BATCH_SIZE
-    demo = True
+    demo = False
     demo_path = './demo_outputs/' + 'demo/'
     os.makedirs(demo_path, exist_ok=True)
 
-    pbar = tqdm(demo_test, total=demo_steps, desc='Batch', leave=True, disable=False)
+    pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
 
     for features in pbar:
         if demo:
@@ -126,94 +127,52 @@ if __name__ == '__main__':
         img = tf.image.resize_with_pad(img, 256, 256)
         img /= 255.
         img = tf.cast(img, tf.float32)
-        yuv = tf.image.rgb_to_yuv(img)
 
-        y = yuv[:, :, :, 0]
-        y = tf.cast(y, tf.float32)
-        y *= 255.
-        y = (y / 127.5) - 1.0
-        # y /= 255.
+        lab = tfio.experimental.color.rgb_to_lab(img)
 
-        y = tf.expand_dims(y, axis=-1)
+        l = lab[:, :, :, 0]
+        l = (l - 50) / 50.
 
-        u = yuv[:, :, :, 1]
-        u = tf.cast(u, tf.float32)
-        u = (u + 0.5) * 255.
-        u = (u / 127.5) - 1.0
-        # u /= 255.
-        u = tf.expand_dims(u, axis=-1)
+        pred_ab = model_gen.predict(l)
 
-        v = yuv[:, :, :, 2]
-        v = tf.cast(v, tf.float32)
-        v = (v + 0.5) * 255.
-        v = (v / 127.5) - 1.0
-        # v /= 255.
-        v = tf.expand_dims(v, axis=-1)
+        for i in range(len(pred_ab)):
+            batch_a = pred_ab[i][:, :, 0]
+            batch_b = pred_ab[i][:, :, 1]
 
-        uv = tf.concat([u, v], axis=-1)
+            l = (l * 50) + 50
+            batch_a *= 127.5
+            batch_b *= 127.5
 
-        pred_yuv = model_gen.predict(y)
+            batch_l = tf.expand_dims(l[i], -1)
+            batch_a = tf.expand_dims(batch_a, -1)
+            batch_b = tf.expand_dims(batch_b, -1)
 
-        y = y[0]
-        u =u[0]
-        v =v[0]
+            pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
 
-        y = (y + 1.0) * 127.5
-        y /= 255.
+            pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
 
-        pred_u = pred_yuv[0][:, :, 0]
-        pred_v = pred_yuv[0][:, :, 1]
+            rows = 1
+            cols = 2
+            fig = plt.figure()
 
-        # pred_u *= 255.
-        pred_u = (pred_u + 1.0) * 127.5
-        pred_u = (pred_u / 255.) - 0.5
+            ax0 = fig.add_subplot(rows, cols, 1)
+            ax0.imshow(pred_lab)
+            ax0.set_title('Prediction')
+            ax0.axis("off")
 
-        # pred_v *= 255.
-        pred_v = (pred_v + 1.0) * 127.5
-        pred_v = (pred_v / 255.) - 0.5
+            ax1 = fig.add_subplot(rows, cols, 2)
+            ax1.imshow(lab[i])
+            ax1.set_title('Groundtruth')
+            ax1.axis("off")
 
-        pred_u = tf.expand_dims(pred_u, -1)
-        pred_v = tf.expand_dims(pred_v, -1)
+            if demo:
+                plt.savefig(demo_path + str(batch_index) + 'output.png', dpi=300)
+            else:
+                plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+            # pred = tf.cast(pred, tf.int32)
+            # plt.show()
+            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
+            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
+            # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
 
-        pred_yuv = tf.concat([y, pred_u, pred_v], axis=-1)
-
-        pred_yuv = tf.image.yuv_to_rgb(pred_yuv)
-
-
-
-        # u *= 255.
-        u = (u + 1.0) * 127.5
-        u = (u / 255.) - 0.5
-
-        # v *= 255.
-        v = (v + 1.0) * 127.5
-        v = (v / 255.) - 0.5
-
-        gt_yuv = tf.concat([y, u, v], axis=-1)
-        gt_yuv = tf.image.yuv_to_rgb(gt_yuv)
-
-        rows = 1
-        cols = 2
-        fig = plt.figure()
-
-        ax0 = fig.add_subplot(rows, cols, 1)
-        ax0.imshow(pred_yuv)
-        ax0.set_title('Prediction')
-        ax0.axis("off")
-
-        ax1 = fig.add_subplot(rows, cols, 2)
-        ax1.imshow(gt_yuv)
-        ax1.set_title('Groundtruth')
-        ax1.axis("off")
-
-        if demo:
-            plt.savefig(demo_path + str(batch_index) + 'output.png', dpi=300)
-        else:
-            plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
-        # pred = tf.cast(pred, tf.int32)
-        # plt.show()
-        # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)
-        # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_2_gt.jpg', img[0])
-        # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_3_out.jpg', pred)
-
-        batch_index += 1
+            batch_index += 1

@@ -10,6 +10,7 @@ from tqdm import tqdm
 import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import tensorflow_io as tfio
+from skimage import color
 
 
 def eacc(y_true, y_pred):
@@ -99,9 +100,9 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    # model_gen.load_weights(WEIGHTS_GEN + '25.h5')
-    # model_dis.load_weights(WEIGHTS_DIS + '25.h5')
-    # model_gan.load_weights(WEIGHTS_GAN + '25.h5')
+    # model_gen.load_weights(WEIGHTS_GEN + '0.h5')
+    # model_dis.load_weights(WEIGHTS_DIS + '0.h5')
+    # model_gan.load_weights(WEIGHTS_GAN + '0.h5')
 
     train_data = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
@@ -149,7 +150,7 @@ if __name__ == '__main__':
             img /= 255.
 
             lab = tfio.experimental.color.rgb_to_lab(img)
-
+            
             l = lab[:, :, :, 0]
             l = (l - 50) / 50.
 
@@ -173,7 +174,9 @@ if __name__ == '__main__':
                 else:
                     x_dis = tf.concat((ab, l), axis=3)
                     # y_dis = tf.ones((shape[0], 1))
-                    y_dis = tf.ones((shape[0], 1)) * 0.9
+                    # y_dis = tf.ones((shape[0], 1)) * 0.9
+                    y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+                    # y_dis = tf.random.uniform(shape[0], minval=0.9, maxval=1.0)
                     # y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
 
                 dis_res = model_dis.train_on_batch(x_dis, y_dis)
@@ -193,54 +196,38 @@ if __name__ == '__main__':
             model_dis.save_weights(WEIGHTS_DIS + str(epoch) + '.h5', overwrite=True)
             model_gan.save_weights(WEIGHTS_GAN + str(epoch) + '.h5', overwrite=True)
 
-        # validation
-        for img in demo_test:
-            img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
-            img = tf.cast(img, tf.float32)
-            img /= 255.
+            os.makedirs(demo_path + str(epoch), exist_ok=True)
 
-            lab = tfio.experimental.color.rgb_to_lab(img)
+            # validation
+            for img in demo_test:
+                img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
+                img = tf.cast(img, tf.float32)
+                img /= 255.
 
-            l = lab[:, :, :, 0]
-            l = (l - 50) / 50.
+                lab = tfio.experimental.color.rgb_to_lab(img)
 
-            a = lab[:, :, :, 1]
-            a /= 128.
+                l = lab[:, :, :, 0]
+                l = (l - 50) / 50.
 
-            b = lab[:, :, :, 2]
-            b /= 128.
+                pred_lab = model_gen.predict(l)
 
-            l = tf.expand_dims(l, axis=-1)
-            a = tf.expand_dims(a, axis=-1)
-            b = tf.expand_dims(b, axis=-1)
+                for i in range(len(pred_lab)):
+                    batch_a = pred_lab[i][:, :, 0]
+                    batch_b = pred_lab[i][:, :, 1]
 
-            ab = tf.concat([a, b], axis=-1)
+                    l = (l * 50) + 50
+                    batch_a *= 128.
+                    batch_b *= 128.
 
-            model_gen.predict(l)
+                    batch_l = tf.expand_dims(l[i], -1)
+                    batch_a = tf.expand_dims(batch_a, -1)
+                    batch_b = tf.expand_dims(batch_b, -1)
 
-            pred_ab = model_gen.predict(l)
-            for i in range(len(pred_ab)):
-                batch_l = l[i]
-                batch_a = a[i]
-                batch_b = b[i]
+                    pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
 
-                l = (l * 50) + 50
+                    pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
 
-                pred_a = pred_ab[i][:, :, 0]
-                pred_b = pred_ab[i][:, :, 1]
+                    plt.imshow(pred_lab)
 
-                pred_a *= 128.
-                pred_b *= 128.
-
-                pred_a = tf.expand_dims(pred_a, -1)
-                pred_b = tf.expand_dims(pred_b, -1)
-
-                pred_lab = tf.concat([batch_l, pred_a, pred_b], axis=-1)
-
-                pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
-
-                plt.imshow(pred_lab)
-                os.makedirs(demo_path + str(epoch), exist_ok=True)
-
-                plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=300)
-                index +=1
+                    plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=300)
+                    index +=1

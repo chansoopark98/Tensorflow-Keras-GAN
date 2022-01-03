@@ -17,6 +17,7 @@ IMAGE_SIZE = (512, 512)
 
 if __name__ == "__main__":
     train_dataset_config = Dataset(DATASET_DIR, IMAGE_SIZE, batch_size=1, mode='train', dataset='CustomCelebahq')
+    # train_dataset_config = Dataset(DATASET_DIR, IMAGE_SIZE, batch_size=1, mode='train', dataset='CustomCeleba')
     train_data = train_dataset_config.dataset_test(train_dataset_config.train_data)
 
 
@@ -24,20 +25,22 @@ if __name__ == "__main__":
     for img in train_data.take(100):
         img = tf.cast(img, tf.uint8)
         img = img[0]
-        img = tf.image.resize(img, (512, 512))
+        # img = tf.image.resize(img, (512, 512))
+        img = tf.image.resize_with_pad(img, 256, 256)
         img /= 255.
 
         # lab = tfio.experimental.color.rgb_to_lab(img)
         ten_lab = tfio.experimental.color.rgb_to_lab(img)
-        gray = tf.image.rgb_to_grayscale(img)
 
 
         l = ten_lab[:, :, 0] # normalize 0 ~ 100 to -1 ~ 1
+        l = l.numpy()
         l = (l - 50) / 50.
         l = (l * 50) + 50
 
 
         a = ten_lab[:, :, 1]
+        a = a.numpy()
         a /= 127.5
         a *= 127.5
 

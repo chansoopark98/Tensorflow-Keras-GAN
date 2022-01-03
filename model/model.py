@@ -184,12 +184,12 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
     return x
 
 def build_generator(input_shape, output_channels):
-    BN_MOMENTUM = 0.8
+    BN_MOMENTUM = 0.99
 
     """ ResNest-101"""
     base = resnest.resnest50(input_shape=input_shape, include_top=False, weights=None, input_tensor=None,
                                classes=1000)
-    base.summary()
+
     model_input = base.input
     # c1 = base.get_layer('stem_act3').output  # 1/2 @ 128 ResNest-101
     c1 = base.get_layer('stem_act3').output  # 1/2 @ 64 ResNest-50 128x128
@@ -200,42 +200,48 @@ def build_generator(input_shape, output_channels):
     # x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048 ResNest-101
     x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048 8x8
 
+    c1 = create_conv(filters=32, kernel_size=1, inputs=c1, bn=True, bn_momentum=BN_MOMENTUM)  # 8x8 512
+    c2 = create_conv(filters=128, kernel_size=1, inputs=c2, bn=True, bn_momentum=BN_MOMENTUM)  # 8x8 512
+    c3 = create_conv(filters=256, kernel_size=1, inputs=c3, bn=True, bn_momentum=BN_MOMENTUM)  # 8x8 512
+    c4 = create_conv(filters=512, kernel_size=1, inputs=c4, bn=True, bn_momentum=BN_MOMENTUM)  # 8x8 512
     x = create_conv(filters=1024, kernel_size=1, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) # 8x8 512
 
     ### Decoder C4 branch ###
-    x = create_deconv(filters=512, kernel_size=3, inputs=x,  bn=True, bn_momentum=BN_MOMENTUM)
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
     x = Concatenate()([x, c4])
-    x = create_conv(filters=512, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) # 16x16 512
+    x = create_conv(filters=512, kernel_size=3, inputs=x, bn=True, dropout=0.5, bn_momentum=BN_MOMENTUM) # 16x16 512
 
     ### Decoder C3 branch ###
-    x = create_deconv(filters=256, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM)
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
     x = Concatenate()([x, c3]) # 64
-    x = create_conv(filters=256, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) #32x32 256
+    x = create_conv(filters=256, kernel_size=3, inputs=x, bn=True, dropout=0.5, bn_momentum=BN_MOMENTUM) #32x32 256
 
     ### Decoder C2 branch ###
-    x = create_deconv(filters=128, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM)
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
     x = Concatenate()([x, c2]) # 64
-    x = create_conv(filters=128, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) #64x64 128
+    x = create_conv(filters=128, kernel_size=3, inputs=x, bn=True, dropout=0.5, bn_momentum=BN_MOMENTUM) #64x64 128
 
     ### Decoder C1 branch ###
-    x = create_deconv(filters=64, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM)
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
     x = Concatenate()([x, c1]) # 64
-    x = create_conv(filters=64, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM) #128x128 64
+    x = create_conv(filters=64, kernel_size=3, inputs=x, bn=True, dropout=0.5, bn_momentum=BN_MOMENTUM) #128x128 64
 
     ### Classifier ###
-    x = create_deconv(filters=64, kernel_size=3, inputs=x, bn=True, bn_momentum=BN_MOMENTUM)
-    model_output = create_conv(filters=2, kernel_size=3, inputs=x, activation='tanh', bn=False)  # 128x128 64
+    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
+    ab_output = create_conv(filters=2, kernel_size=3, inputs=x, activation='tanh', bn=False)  # 128x128 64
+
+    model_output = tf.concat([model_input, ab_output], axis=-1)
 
     return model_input, model_output
 
 def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
     inputs = Input(shape=image_size)
 
-    conv1 = create_conv(32, (3, 3), inputs, 'conv1', activation='leakyrelu', dropout=.25, bn=False, stride=2) # 256x256
-    conv2 = create_conv(64, (3, 3), conv1, 'conv2', activation='leakyrelu', dropout=.25, bn=True, stride=2) # 128x128
-    conv3 = create_conv(128, (3, 3), conv2, 'conv3', activation='leakyrelu', dropout=.25, bn=True, stride=2) # 64x64
-    conv4 = create_conv(256, (3, 3), conv3, 'conv4', activation='leakyrelu', dropout=.25,  bn=True, stride=2) # 32x32
-    conv5 = create_conv(512, (3, 3), conv4, 'conv5', activation='leakyrelu', dropout=.25,  bn=True, stride=2) # 16x16
+    conv1 = create_conv(32, (3, 3), inputs, 'conv1', activation='leakyrelu', dropout=0., bn=False, stride=2) # 256x256
+    conv2 = create_conv(64, (3, 3), conv1, 'conv2', activation='leakyrelu', dropout=.4, bn=True, stride=2) # 128x128
+    conv3 = create_conv(128, (3, 3), conv2, 'conv3', activation='leakyrelu', dropout=.4, bn=True, stride=2) # 64x64
+    conv4 = create_conv(256, (3, 3), conv3, 'conv4', activation='leakyrelu', dropout=.4,  bn=True, stride=2) # 32x32
+    conv5 = create_conv(512, (3, 3), conv4, 'conv5', activation='leakyrelu', dropout=.4,  bn=True, stride=2) # 16x16
 
     flat = Flatten()(conv5)
     dense6 = Dense(1, activation='sigmoid')(flat)

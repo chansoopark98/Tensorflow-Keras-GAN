@@ -35,7 +35,8 @@ def create_model_gan(input_shape, generator, discriminator):
     input = Input(input_shape)
 
     gen_out = generator(input)
-    dis_out = discriminator(concatenate([gen_out, input], axis=3))
+    # dis_out = discriminator(concatenate([gen_out, input], axis=3))
+    dis_out = discriminator(gen_out)
 
     model = tf.keras.Model(inputs=[input], outputs=[dis_out, gen_out], name='dcgan')
     return model
@@ -74,7 +75,7 @@ def demo_prepare(path):
 
 
 if __name__ == '__main__':
-    EPOCHS = 100
+    EPOCHS = 101
     BATCH_SIZE = 32
     # LEARNING_RATE = 0.0005
     LEARNING_RATE = 0.0002
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     LAMBDA2 = 100
     INPUT_SHAPE_GEN = (256, 256, 1)
     INPUT_SHAPE_DIS = (256, 256, 3)
-    GEN_OUTPUT_CHANNEL = 2
+    GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
     # WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
     WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen_'
@@ -100,19 +101,23 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    # model_gen.load_weights(WEIGHTS_GEN + '0.h5')
-    # model_dis.load_weights(WEIGHTS_DIS + '0.h5')
-    # model_gan.load_weights(WEIGHTS_GAN + '0.h5')
+    model_gen.load_weights(WEIGHTS_GEN + '0.h5')
+    model_dis.load_weights(WEIGHTS_DIS + '0.h5')
+    model_gan.load_weights(WEIGHTS_GAN + '0.h5')
 
-    train_data = tfds.load('CustomCelebahq',
+    celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
+
+    celebA = tfds.load('CustomCeleba',
+                           data_dir=DATASET_DIR, split='train[:20%]', shuffle_files=True)
+
+    train_data = celebA_hq.concatenate(celebA)
 
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)
     steps_per_epoch = number_train // BATCH_SIZE
     train_data = train_data.shuffle(1024)
     train_data = train_data.padded_batch(BATCH_SIZE)
-    # train_data = train_data.repeat(EPOCHS)
     train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
     # prepare validation dataset
@@ -164,70 +169,69 @@ if __name__ == '__main__':
             a = tf.expand_dims(a, axis=-1)
             b = tf.expand_dims(b, axis=-1)
 
-            ab = tf.concat([a, b], axis=-1)
+            lab = tf.concat([l, a, b], axis=-1)
 
             if batch_counter % 2 == 0:
                 toggle = not toggle
                 if toggle:
-                    x_dis = tf.concat((model_gen.predict(l), l), axis=3)
-                    y_dis = tf.zeros((shape[0], 1)) # TODO: np to tf
+                    # x_dis = tf.concat((model_gen.predict(l), l), axis=3)
+                    x_dis = model_gen.predict(l)
+                    y_dis = tf.zeros((shape[0], 1))
                 else:
-                    x_dis = tf.concat((ab, l), axis=3)
-                    # y_dis = tf.ones((shape[0], 1))
-                    # y_dis = tf.ones((shape[0], 1)) * 0.9
+                    # x_dis = tf.concat((l, ab), axis=3)
+                    x_dis = lab
                     y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
-                    # y_dis = tf.random.uniform(shape[0], minval=0.9, maxval=1.0)
-                    # y_dis = np.random.uniform(low=0.9, high=1, size=BATCH_SIZE)
 
                 dis_res = model_dis.train_on_batch(x_dis, y_dis)
 
             model_dis.trainable = False
             x_gen = l
             y_gen = tf.ones((shape[0], 1))
-            x_output = ab
+            x_output = lab
             gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
             model_dis.trainable = True
 
             pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
                                     gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
 
-        if epoch % 5 == 0:
-            model_gen.save_weights(WEIGHTS_GEN + str(epoch) + '.h5', overwrite=True)
-            model_dis.save_weights(WEIGHTS_DIS + str(epoch) + '.h5', overwrite=True)
-            model_gan.save_weights(WEIGHTS_GAN + str(epoch) + '.h5', overwrite=True)
+        # if epoch % 5 == 0:
+        model_gen.save_weights(WEIGHTS_GEN + str(epoch) + '.h5', overwrite=True)
+        model_dis.save_weights(WEIGHTS_DIS + str(epoch) + '.h5', overwrite=True)
+        model_gan.save_weights(WEIGHTS_GAN + str(epoch) + '.h5', overwrite=True)
 
-            os.makedirs(demo_path + str(epoch), exist_ok=True)
+        os.makedirs(demo_path + str(epoch), exist_ok=True)
 
-            # validation
-            for img in demo_test:
-                img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
-                img = tf.cast(img, tf.float32)
-                img /= 255.
+        # validation
+        for img in demo_test:
+            img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
+            img = tf.cast(img, tf.float32)
+            img /= 255.
 
-                lab = tfio.experimental.color.rgb_to_lab(img)
+            lab = tfio.experimental.color.rgb_to_lab(img)
 
-                l = lab[:, :, :, 0]
-                l = (l - 50) / 50.
+            l = lab[:, :, :, 0]
+            l = (l - 50) / 50.
 
-                pred_lab = model_gen.predict(l)
+            pred_lab = model_gen.predict(l)
 
-                for i in range(len(pred_lab)):
-                    batch_a = pred_lab[i][:, :, 0]
-                    batch_b = pred_lab[i][:, :, 1]
+            for i in range(len(pred_lab)):
+                batch_l = pred_lab[i][:, :, 0]
+                batch_a = pred_lab[i][:, :, 1]
+                batch_b = pred_lab[i][:, :, 2]
 
-                    l = (l * 50) + 50
-                    batch_a *= 128.
-                    batch_b *= 128.
+                batch_l = (batch_l * 50) + 50
+                batch_a *= 128.
+                batch_b *= 128.
 
-                    batch_l = tf.expand_dims(l[i], -1)
-                    batch_a = tf.expand_dims(batch_a, -1)
-                    batch_b = tf.expand_dims(batch_b, -1)
+                batch_l = tf.expand_dims(batch_l, -1)
+                batch_a = tf.expand_dims(batch_a, -1)
+                batch_b = tf.expand_dims(batch_b, -1)
 
-                    pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
+                pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
 
-                    pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
+                pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
 
-                    plt.imshow(pred_lab)
+                plt.imshow(pred_lab)
 
-                    plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=300)
-                    index +=1
+                plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=300)
+                index +=1

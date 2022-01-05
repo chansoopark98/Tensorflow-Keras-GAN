@@ -83,7 +83,7 @@ if __name__ == '__main__':
     LAMBDA1 = 1
     LAMBDA2 = 100
     INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 3)
+    INPUT_SHAPE_DIS = (256, 256, 2)
     GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
     # WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
@@ -112,6 +112,7 @@ if __name__ == '__main__':
                            data_dir=DATASET_DIR, split='train[:20%]', shuffle_files=True)
 
     train_data = celebA_hq.concatenate(celebA)
+    # train_data = celebA_hq
 
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)
@@ -130,6 +131,9 @@ if __name__ == '__main__':
     demo_path = './demo_outputs/' + 'demo/'
     os.makedirs(demo_path, exist_ok=True)
 
+    l_cent = 50.
+    l_norm = 100.
+    ab_norm = 110.
 
     for epoch in range(EPOCHS):
         pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
@@ -142,10 +146,9 @@ if __name__ == '__main__':
             # ---------------------
             #  Train Discriminator
             # ---------------------
-            img = tf.cast(features['image'], tf.uint8)
+            img = tf.cast(features['image'], tf.float32)
             shape = img.shape
 
-            img = tf.cast(img, tf.float32)
             img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
 
             # data augmentation
@@ -155,21 +158,21 @@ if __name__ == '__main__':
             img /= 255.
 
             lab = tfio.experimental.color.rgb_to_lab(img)
-            
+
             l = lab[:, :, :, 0]
-            l = (l - 50) / 50.
+            l = (l - l_cent) / l_norm
 
             a = lab[:, :, :, 1]
-            a /= 128.
+            a = a / ab_norm
 
             b = lab[:, :, :, 2]
-            b /= 128.
+            b = b / ab_norm
 
             l = tf.expand_dims(l, axis=-1)
             a = tf.expand_dims(a, axis=-1)
             b = tf.expand_dims(b, axis=-1)
 
-            lab = tf.concat([l, a, b], axis=-1)
+            ab = tf.concat([a, b], axis=-1)
 
             if batch_counter % 2 == 0:
                 toggle = not toggle
@@ -179,7 +182,7 @@ if __name__ == '__main__':
                     y_dis = tf.zeros((shape[0], 1))
                 else:
                     # x_dis = tf.concat((l, ab), axis=3)
-                    x_dis = lab
+                    x_dis = ab
                     y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
 
                 dis_res = model_dis.train_on_batch(x_dis, y_dis)
@@ -187,7 +190,7 @@ if __name__ == '__main__':
             model_dis.trainable = False
             x_gen = l
             y_gen = tf.ones((shape[0], 1))
-            x_output = lab
+            x_output = ab
             gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
             model_dis.trainable = True
 
@@ -205,33 +208,32 @@ if __name__ == '__main__':
         for img in demo_test:
             img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
             img = tf.cast(img, tf.float32)
+
             img /= 255.
 
             lab = tfio.experimental.color.rgb_to_lab(img)
 
             l = lab[:, :, :, 0]
-            l = (l - 50) / 50.
+            l = (l - l_cent) / l_norm
 
-            pred_lab = model_gen.predict(l)
+            pred_ab = model_gen.predict(l)
 
-            for i in range(len(pred_lab)):
-                batch_l = pred_lab[i][:, :, 0]
-                batch_a = pred_lab[i][:, :, 1]
-                batch_b = pred_lab[i][:, :, 2]
+            for i in range(len(pred_ab)):
+                batch_a = pred_ab[i][:, :, 0]
+                batch_b = pred_ab[i][:, :, 1]
 
-                batch_l = (batch_l * 50) + 50
-                batch_a *= 128.
-                batch_b *= 128.
+                batch_l = l[i] * l_norm + l_cent
+                batch_a = batch_a * ab_norm
+                batch_b = batch_b * ab_norm
 
                 batch_l = tf.expand_dims(batch_l, -1)
                 batch_a = tf.expand_dims(batch_a, -1)
                 batch_b = tf.expand_dims(batch_b, -1)
 
                 pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
-
                 pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
 
                 plt.imshow(pred_lab)
 
-                plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=300)
+                plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=200)
                 index +=1

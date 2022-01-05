@@ -33,7 +33,8 @@ def create_model_gan(input_shape, generator, discriminator):
     input = Input(input_shape)
 
     gen_out = generator(input)
-    dis_out = discriminator(concatenate([gen_out, input], axis=3))
+    # dis_out = discriminator(concatenate([gen_out, input], axis=3))
+    dis_out = discriminator(gen_out)
 
     model = tf.keras.Model(inputs=[input], outputs=[dis_out, gen_out], name='dcgan')
     return model
@@ -90,7 +91,7 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    model_gen.load_weights('./checkpoints/YUV_GAN_Gen_95.h5', by_name=True)
+    model_gen.load_weights('./checkpoints/YUV_GAN_Gen_98.h5', by_name=True)
     train_data = tfds.load('CustomCelebahq',
                                 data_dir=DATASET_DIR, split='train[:25%]', shuffle_files=True)
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
@@ -111,11 +112,11 @@ if __name__ == '__main__':
     demo_test = demo_imgs.map(demo_prepare)
     demo_test = demo_test.batch(BATCH_SIZE)
     demo_steps = len(filenames) // BATCH_SIZE
-    demo = False
+    demo = True
     demo_path = './demo_outputs/' + 'demo/'
     os.makedirs(demo_path, exist_ok=True)
 
-    pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
+    pbar = tqdm(demo_test, total=demo_steps, desc='Batch', leave=True, disable=False)
 
     for features in pbar:
         if demo:
@@ -133,17 +134,18 @@ if __name__ == '__main__':
         l = lab[:, :, :, 0]
         l = (l - 50) / 50.
 
-        pred_ab = model_gen.predict(l)
+        pred_lab = model_gen.predict(l)
 
-        for i in range(len(pred_ab)):
-            batch_a = pred_ab[i][:, :, 0]
-            batch_b = pred_ab[i][:, :, 1]
+        for i in range(len(pred_lab)):
+            batch_l = pred_lab[i][:, :, 0]
+            batch_a = pred_lab[i][:, :, 1]
+            batch_b = pred_lab[i][:, :, 2]
 
-            l = (l * 50) + 50
+            batch_l = (batch_l * 50) + 50
             batch_a *= 128.
             batch_b *= 128.
 
-            batch_l = tf.expand_dims(l[i], -1)
+            batch_l = tf.expand_dims(batch_l, -1)
             batch_a = tf.expand_dims(batch_a, -1)
             batch_b = tf.expand_dims(batch_b, -1)
 
@@ -161,7 +163,7 @@ if __name__ == '__main__':
             ax0.axis("off")
 
             ax1 = fig.add_subplot(rows, cols, 2)
-            ax1.imshow(lab[i])
+            ax1.imshow(img[i])
             ax1.set_title('Groundtruth')
             ax1.axis("off")
 

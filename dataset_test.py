@@ -23,30 +23,49 @@ if __name__ == "__main__":
 
 
     for img in train_data.take(100):
-        img = tf.cast(img, tf.uint8)
+
         img = img[0]
         # img = tf.image.resize(img, (512, 512))
         img = tf.image.resize_with_pad(img, 256, 256)
-        img /= 255.
+        img = tf.cast(img, tf.float32) # if use ycbcr
+        img /= 255. #TODO! if use lab
 
-        # lab = tfio.experimental.color.rgb_to_lab(img)
-        ten_lab = tfio.experimental.color.rgb_to_lab(img)
+        lab = tfio.experimental.color.rgb_to_lab(img)
+        l_cent = 50.
+        l_norm = 100.
+        ab_norm = 110.
+        #
+        """    
+        def normalize_l(self, in_l):
+            return (in_l - self.l_cent) / self.l_norm
+    
+    
+        def unnormalize_l(self, in_l):
+            return in_l * self.l_norm + self.l_cent
+    
+    
+        def normalize_ab(self, in_ab):
+            return in_ab / self.ab_norm
+    
+    
+        def unnormalize_ab(self, in_ab):
+            return in_ab * self.ab_norm
+        """
 
-
-        l = ten_lab[:, :, 0] # normalize 0 ~ 100 to -1 ~ 1
+        l = lab[:, :, 0]
         l = l.numpy()
-        l = (l - 50) / 50.
-        l = (l * 50) + 50
+        l = (l - l_cent) / l_norm
+        l = l * l_norm + l_cent
 
-
-        a = ten_lab[:, :, 1]
+        a = lab[:, :, 1]
         a = a.numpy()
-        a /= 127.5
-        a *= 127.5
+        a = a / ab_norm
+        a = a * ab_norm
 
-        b = ten_lab[:, :, 2]
-        b /= 127.5
-        b *= 127.5
+        b = lab[:, :, 2]
+        b = b.numpy()
+        b = b / ab_norm
+        b = b * ab_norm
 
         l = tf.expand_dims(l, axis=-1)
         a = tf.expand_dims(a, axis=-1)
@@ -70,20 +89,6 @@ if __name__ == "__main__":
         ax0.set_title('original')
         ax0.axis("off")
 
-        # ax1 = fig.add_subplot(rows, cols, 2)
-        # ax1.imshow(Gray)
-        # ax1.set_title('Gray image')
-        # ax1.axis("off")
-        #
-        # ax2 = fig.add_subplot(rows, cols, 3)
-        # ax2.imshow(Cb)
-        # ax2.set_title('Cb image')
-        # ax2.axis("off")
-        #
-        # ax3 = fig.add_subplot(rows, cols, 4)
-        # ax3.imshow(Cr)
-        # ax3.set_title('Cr image')
-        # ax3.axis("off")
 
         plt.show()
 

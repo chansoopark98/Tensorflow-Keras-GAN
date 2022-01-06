@@ -184,66 +184,37 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
     return x
 
 def build_generator(input_shape, output_channels):
-    inputs = Input(shape=(256, 256, 1), name='image_input')
+    # inputs = Input(shape=(256, 256, 1), name='image_input')
     init = 'he_normal'
     momentum = 0.8
 
-    conv1 = Conv2D(64,
-                   kernel_size=(5, 5),
-                   strides=(1, 1),
-                   use_bias=False,
-                   kernel_initializer=init,
-                   padding='same')(inputs)
-    conv1 = BatchNormalization(momentum=momentum)(conv1)
-    conv1 = Activation(LeakyReLU(0.2))(conv1)
+    base = resnest.resnest50(input_shape=input_shape, include_top=False, weights=None, input_tensor=None)
+    inputs = base.input
+    c1 = base.get_layer('stem_act3').output # 128
+    c2 = base.get_layer('stage1_block3_shorcut_act').output # 256
+    c3 = base.get_layer('stage2_block4_shorcut_act').output # 512
+    c4 = base.get_layer('stage3_block6_shorcut_act').output # 1024
+    x = base.get_layer('stage4_block3_shorcut_act').output # 2048
 
-    conv11 = Conv2D(128,
-                    kernel_size=(5, 5),
-                    strides=(2, 2),
-                    use_bias=False,
-                    kernel_initializer=init,
-                    padding='same')(conv1)
-    conv11 = BatchNormalization(momentum=momentum)(conv11)
-    conv11 = Activation(LeakyReLU(0.2))(conv11)
-
-    conv21 = Conv2D(256,
-                    kernel_size=(3, 3),
-                    strides=(2, 2),
-                    use_bias=False,
-                    kernel_initializer=init,
-                    padding='same')(conv11)
-    conv21 = BatchNormalization(momentum=momentum)(conv21)
-    conv21 = Activation(LeakyReLU(0.2))(conv21)
-
-    conv31 = Conv2D(512,
-                    kernel_size=(3, 3),
-                    strides=(2, 2),
-                    use_bias=False,
-                    kernel_initializer=init,
-                    padding='same')(conv21)
-    conv31 = BatchNormalization(momentum=momentum)(conv31)
-    conv31 = Activation(LeakyReLU(0.2))(conv31)
-
-    # Bottleneck block
-    bottleneck = conv31
-
-    bnconv1 = Conv2D(512,
-                     kernel_size=(3, 3),
-                     strides=(2, 2),
-                     use_bias=False,
-                     kernel_initializer=init,
-                     padding='same')(bottleneck)
-    bnconv1 = BatchNormalization(momentum=momentum)(bnconv1)
-    bnconv1 = Activation(LeakyReLU(0.2))(bnconv1)
 
     convtrans31 = Conv2DTranspose(512,
                                   kernel_size=(3, 3),
                                   strides=(2, 2),
                                   use_bias=False,
                                   kernel_initializer=init,
-                                  padding='same')(bnconv1)
+                                  padding='same')(x)
+    # convtrans31 = Conv2D(512,
+    #                       kernel_size=(1, 1),
+    #                       strides=(1, 1),
+    #                       use_bias=False,
+    #                       kernel_initializer=init,
+    #                       padding='same')(x)
+    # convtrans31 = BatchNormalization(momentum=momentum)(convtrans31)
+    # convtrans31 = Activation(LeakyReLU(0.2))(convtrans31)
+    # convtrans31 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans31)
 
-    merge1 = Concatenate()([convtrans31, conv31])
+
+    merge1 = Concatenate()([convtrans31, c4])
     merge1 = Dropout(0.3)(merge1)
 
     deconv31 = Conv2D(512,
@@ -262,8 +233,17 @@ def build_generator(input_shape, output_channels):
                                   use_bias=False,
                                   kernel_initializer=init,
                                   padding='same')(deconv31)
+    # convtrans21 = Conv2D(256,
+    #                       kernel_size=(1, 1),
+    #                       strides=(1, 1),
+    #                       use_bias=False,
+    #                       kernel_initializer=init,
+    #                       padding='same')(deconv31)
+    # convtrans21 = BatchNormalization(momentum=momentum)(convtrans21)
+    # convtrans21 = Activation(LeakyReLU(0.2))(convtrans21)
+    # convtrans21 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans21)
 
-    merge2 = Concatenate()([convtrans21, conv21])
+    merge2 = Concatenate()([convtrans21, c3])
     merge2 = Dropout(0.3)(merge2)
 
     deconv21 = Conv2D(256,
@@ -282,8 +262,17 @@ def build_generator(input_shape, output_channels):
                                   use_bias=False,
                                   kernel_initializer=init,
                                   padding='same')(deconv21)
+    # convtrans11 = Conv2D(128,
+    #                       kernel_size=(1, 1),
+    #                       strides=(1, 1),
+    #                       use_bias=False,
+    #                       kernel_initializer=init,
+    #                       padding='same')(deconv21)
+    # convtrans11 = BatchNormalization(momentum=momentum)(convtrans11)
+    # convtrans11 = Activation(LeakyReLU(0.2))(convtrans11)
+    # convtrans11 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans11)
 
-    merge3 = Concatenate()([convtrans11, conv11])
+    merge3 = Concatenate()([convtrans11, c2])
     merge3 = Dropout(0.3)(merge3)
 
     deconv11 = Conv2D(128,
@@ -302,8 +291,17 @@ def build_generator(input_shape, output_channels):
                                  use_bias=False,
                                  kernel_initializer=init,
                                  padding='same')(deconv11)
+    # convtrans1 = Conv2D(128,
+    #                       kernel_size=(1, 1),
+    #                       strides=(1, 1),
+    #                       use_bias=False,
+    #                       kernel_initializer=init,
+    #                       padding='same')(deconv11)
+    # convtrans1 = BatchNormalization(momentum=momentum)(convtrans1)
+    # convtrans1 = Activation(LeakyReLU(0.2))(convtrans1)
+    # convtrans1 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans1)
 
-    merge4 = Concatenate()([convtrans1, conv1])
+    merge4 = Concatenate()([convtrans1, c1])
     merge4 = Dropout(0.3)(merge4)
 
     deconv1 = Conv2D(64,
@@ -314,20 +312,29 @@ def build_generator(input_shape, output_channels):
                      padding='same')(merge4)
     deconv1 = BatchNormalization(momentum=momentum)(deconv1)
     deconv1 = Dropout(0.3)(deconv1)
-    deconv1 = Activation(LeakyReLU(0.1))(deconv1)
+    deconv1 = Activation(LeakyReLU(0.2))(deconv1)
 
-    output = Conv2D(2,
-                    kernel_size=(5, 5),
+    output = Conv2DTranspose(64,
+                                 kernel_size=(3, 3),
+                                 strides=(2, 2),
+                                 use_bias=False,
+                                 kernel_initializer=init,
+                                 padding='same')(deconv1)
+    output = BatchNormalization(momentum=momentum)(output)
+    output = Activation(LeakyReLU(0.2))(output)
+
+    output = Conv2D(output_channels,
+                    kernel_size=(3, 3),
                     strides=(1, 1),
                     use_bias=False,
                     kernel_initializer=init,
                     padding='same',
-                    activation='tanh')(deconv1)
+                    activation='tanh')(output)
 
     return inputs, output
 
-def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
-    inputs = Input(shape=(256, 256, 2), name='image_input')
+def build_discriminator(image_size=(512, 512, 3), name='discriminator'):
+    inputs = Input(shape=image_size, name='image_input')
     init = 'he_normal'
     momentum = 0.8
 
@@ -337,11 +344,11 @@ def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
                     use_bias=False,
                     kernel_initializer=init,
                     padding='same')(inputs)
-    conv11 = BatchNormalization(momentum=momentum)(conv11)
+    # conv11 = BatchNormalization(momentum=momentum)(conv11)
     conv11 = Activation(LeakyReLU(0.2))(conv11)
 
     conv21 = Conv2D(128,
-                    kernel_size=(4, 4),
+                    kernel_size=(3, 3),
                     strides=(2, 2),
                     use_bias=False,
                     kernel_initializer=init,
@@ -350,27 +357,27 @@ def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
     conv21 = Activation(LeakyReLU(0.2))(conv21)
 
     conv31 = Conv2D(256,
-                    kernel_size=(4, 4),
+                    kernel_size=(3, 3),
                     strides=(2, 2),
                     use_bias=False,
                     kernel_initializer=init,
                     padding='same')(conv21)
     conv31 = BatchNormalization(momentum=momentum)(conv31)
     conv31 = Activation(LeakyReLU(0.2))(conv31)
-    conv31 = Dropout(0.2)(conv31)
+    conv31 = Dropout(0.4)(conv31)
 
     conv41 = Conv2D(512,
-                    kernel_size=(4, 4),
+                    kernel_size=(3, 3),
                     strides=(2, 2),
                     use_bias=False,
                     kernel_initializer=init,
                     padding='same')(conv31)
     conv41 = BatchNormalization(momentum=momentum)(conv41)
     conv41 = Activation(LeakyReLU(0.2))(conv41)
-    conv41 = Dropout(0.2)(conv41)
+    conv41 = Dropout(0.4)(conv41)
 
     conv51 = Conv2D(1024,
-                    kernel_size=(4, 4),
+                    kernel_size=(3, 3),
                     strides=(1, 1),
                     use_bias=False,
                     kernel_initializer=init,
@@ -380,10 +387,10 @@ def build_discriminator(image_size=(512, 512, 2), name='discriminator'):
     conv51 = Dropout(0.4)(conv51)
 
     output = Flatten()(conv51)
+
     output = Dense(1,
                    kernel_initializer=init,
                    use_bias=False)(output)
-    output = BatchNormalization(momentum=momentum)(output)
     output = Activation('sigmoid')(output)
 
     return inputs, output

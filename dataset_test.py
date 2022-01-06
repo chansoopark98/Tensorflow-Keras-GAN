@@ -27,6 +27,13 @@ if __name__ == "__main__":
         img = img[0]
         # img = tf.image.resize(img, (512, 512))
         img = tf.image.resize_with_pad(img, 256, 256)
+        # gray = tfio.experimental.color.rgb_to_grayscale(img)
+        # gray = tf.image.rgb_to_grayscale(img)
+        gray = color.rgb2gray(img)
+
+        gray = tf.cast(gray, tf.float32)
+        gray /= 127.5
+        gray -= 1.
         img = tf.cast(img, tf.float32) # if use ycbcr
         img /= 255. #TODO! if use lab
 

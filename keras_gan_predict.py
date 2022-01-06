@@ -91,9 +91,9 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    model_gen.load_weights('./checkpoints/YUV_GAN_Gen_98.h5', by_name=True)
-    train_data = tfds.load('CustomCelebahq',
-                                data_dir=DATASET_DIR, split='train[:25%]', shuffle_files=True)
+    model_gen.load_weights('./checkpoints/YUV_GAN_Gen_83.h5', by_name=True)
+    train_data = tfds.load('CustomCeleba',
+                           data_dir=DATASET_DIR, split='train[:1%]', shuffle_files=True)
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)
     steps_per_epoch = number_train // BATCH_SIZE
@@ -112,11 +112,22 @@ if __name__ == '__main__':
     demo_test = demo_imgs.map(demo_prepare)
     demo_test = demo_test.batch(BATCH_SIZE)
     demo_steps = len(filenames) // BATCH_SIZE
-    demo = True
+    demo = False
     demo_path = './demo_outputs/' + 'demo/'
     os.makedirs(demo_path, exist_ok=True)
 
-    pbar = tqdm(demo_test, total=demo_steps, desc='Batch', leave=True, disable=False)
+    if demo:
+        dataset = demo_test
+        steps = demo_steps
+    else:
+        dataset = train_data
+        steps = steps_per_epoch
+
+    pbar = tqdm(dataset, total=steps, desc='Batch', leave=True, disable=False)
+
+    l_cent = 50.
+    l_norm = 100.
+    ab_norm = 110.
 
     for features in pbar:
         if demo:
@@ -132,18 +143,18 @@ if __name__ == '__main__':
         lab = tfio.experimental.color.rgb_to_lab(img)
 
         l = lab[:, :, :, 0]
-        l = (l - 50) / 50.
+        l = (l - l_cent) / l_norm
 
         pred_lab = model_gen.predict(l)
 
         for i in range(len(pred_lab)):
-            batch_l = pred_lab[i][:, :, 0]
-            batch_a = pred_lab[i][:, :, 1]
-            batch_b = pred_lab[i][:, :, 2]
+            # batch_l = pred_lab[i][:, :, 0]
+            batch_a = pred_lab[i][:, :, 0]
+            batch_b = pred_lab[i][:, :, 1]
 
-            batch_l = (batch_l * 50) + 50
-            batch_a *= 128.
-            batch_b *= 128.
+            batch_l = l[i] * l_norm + l_cent
+            batch_a = batch_a * ab_norm
+            batch_b = batch_b * ab_norm
 
             batch_l = tf.expand_dims(batch_l, -1)
             batch_a = tf.expand_dims(batch_a, -1)

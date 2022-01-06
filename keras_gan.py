@@ -13,6 +13,7 @@ import tensorflow_io as tfio
 from skimage import color
 
 
+
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
 
@@ -83,7 +84,7 @@ if __name__ == '__main__':
     LAMBDA1 = 1
     LAMBDA2 = 100
     INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 2)
+    INPUT_SHAPE_DIS = (256, 256, 3)
     GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
     # WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
@@ -101,9 +102,9 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    model_gen.load_weights(WEIGHTS_GEN + '0.h5')
-    model_dis.load_weights(WEIGHTS_DIS + '0.h5')
-    model_gan.load_weights(WEIGHTS_GAN + '0.h5')
+    # model_gen.load_weights(WEIGHTS_GEN + '0.h5')
+    # model_dis.load_weights(WEIGHTS_DIS + '0.h5')
+    # model_gan.load_weights(WEIGHTS_GAN + '0.h5')
 
     celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
@@ -146,10 +147,15 @@ if __name__ == '__main__':
             # ---------------------
             #  Train Discriminator
             # ---------------------
-            img = tf.cast(features['image'], tf.float32)
+            # img = tf.cast(features['image'], tf.float32)
+            img = features['image']
             shape = img.shape
 
             img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
+            gray = color.rgb2gray(img)
+            gray = tf.cast(gray, tf.float32)
+            gray /= 127.5
+            gray -= 1.
 
             # data augmentation
             if tf.random.uniform([], minval=0, maxval=1) > 0.5:
@@ -172,25 +178,38 @@ if __name__ == '__main__':
             a = tf.expand_dims(a, axis=-1)
             b = tf.expand_dims(b, axis=-1)
 
-            ab = tf.concat([a, b], axis=-1)
+            lab = tf.concat([l, a, b], axis=-1)
 
-            if batch_counter % 2 == 0:
-                toggle = not toggle
-                if toggle:
-                    # x_dis = tf.concat((model_gen.predict(l), l), axis=3)
-                    x_dis = model_gen.predict(l)
-                    y_dis = tf.zeros((shape[0], 1))
-                else:
-                    # x_dis = tf.concat((l, ab), axis=3)
-                    x_dis = ab
-                    y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+            # # original
+            # if batch_counter % 2 == 0:
+            #     toggle = not toggle
+            #     if toggle:
+            #         # x_dis = tf.concat((model_gen.predict(l), l), axis=3)
+            #         x_dis = model_gen.predict(l)
+            #         y_dis = tf.zeros((shape[0], 1))
+            #     else:
+            #         # x_dis = tf.concat((l, ab), axis=3)
+            #         x_dis = ab
+            #         y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+            #
+            #     dis_res = model_dis.train_on_batch(x_dis, y_dis)
 
-                dis_res = model_dis.train_on_batch(x_dis, y_dis)
+            # test
+
+            fake_x_dis = model_gen.predict(gray)
+            fake_y_dis = tf.zeros((shape[0], 1))
+            d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
+
+            real_x_dis = lab
+            real_y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+
+            d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
+            dis_res = 0.5 * tf.add(d_fake, d_real)
 
             model_dis.trainable = False
-            x_gen = l
+            x_gen = gray
             y_gen = tf.ones((shape[0], 1))
-            x_output = ab
+            x_output = lab
             gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
             model_dis.trainable = True
 
@@ -207,22 +226,19 @@ if __name__ == '__main__':
         # validation
         for img in demo_test:
             img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
-            img = tf.cast(img, tf.float32)
+            gray = color.rgb2gray(img)
+            gray = tf.cast(gray, tf.float32)
+            gray /= 127.5
+            gray -= 1.
 
-            img /= 255.
-
-            lab = tfio.experimental.color.rgb_to_lab(img)
-
-            l = lab[:, :, :, 0]
-            l = (l - l_cent) / l_norm
-
-            pred_ab = model_gen.predict(l)
+            pred_ab = model_gen.predict(gray)
 
             for i in range(len(pred_ab)):
-                batch_a = pred_ab[i][:, :, 0]
-                batch_b = pred_ab[i][:, :, 1]
+                batch_l = pred_ab[i][:, :, 0]
+                batch_a = pred_ab[i][:, :, 1]
+                batch_b = pred_ab[i][:, :, 2]
 
-                batch_l = l[i] * l_norm + l_cent
+                batch_l = batch_l * l_norm + l_cent
                 batch_a = batch_a * ab_norm
                 batch_b = batch_b * ab_norm
 

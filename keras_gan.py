@@ -11,7 +11,7 @@ import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import tensorflow_io as tfio
 from skimage import color
-
+# LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4.3.0"
 
 
 def eacc(y_true, y_pred):
@@ -109,11 +109,11 @@ if __name__ == '__main__':
     celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
-    celebA = tfds.load('CustomCeleba',
-                           data_dir=DATASET_DIR, split='train[:20%]', shuffle_files=True)
+    # celebA = tfds.load('CustomCeleba',
+    #                        data_dir=DATASET_DIR, split='train[:20%]', shuffle_files=True)
 
-    train_data = celebA_hq.concatenate(celebA)
-    # train_data = celebA_hq
+    # train_data = celebA_hq.concatenate(celebA)
+    train_data = celebA_hq
 
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)

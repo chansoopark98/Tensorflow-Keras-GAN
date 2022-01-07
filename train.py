@@ -94,7 +94,7 @@ else:
     #                                           warmup_proportion=0.1,
     #                                           min_lr=0.0001)
 
-
+False
 if MIXED_PRECISION:
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 

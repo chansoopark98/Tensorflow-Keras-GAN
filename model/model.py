@@ -131,7 +131,7 @@ def deconv_module(x, channels, kernel_size=2, strides=2, prefix='name'):
 
 def build_generator(input_shape, output_channels):
     inputs = Input(shape=input_shape, name='image_input')
-    bn_momentum = 0.99
+    bn_momentum = 0.8
     # Encoder branch
     conv1_1 = conv_module(x=inputs, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
                 activation='leakyrelu', dropout=0.0, prefix='conv1_1')
@@ -266,7 +266,7 @@ def build_discriminator(image_size=(512, 512, 3), name='discriminator'):
 
     output = Dense(1,
                    kernel_initializer=init,
-                   use_bias=False)(output)
+                   use_bias=True)(output)
     output = Activation('sigmoid')(output)
 
     return inputs, output

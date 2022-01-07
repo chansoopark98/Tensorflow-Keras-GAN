@@ -70,26 +70,7 @@ class Dataset:
         gray /= 127.5
         gray -= 1.
 
-        img /= 255.
-
-        lab = tfio.experimental.color.rgb_to_lab(img)
-
-        l = lab[:, :, 0]
-        l = (l - self.l_cent) / self.l_norm
-
-        a = lab[:, :, 1]
-        a = a / self.ab_norm
-
-        b = lab[:, :, 2]
-        b = b / self.ab_norm
-
-        l = tf.expand_dims(l, axis=-1)
-        a = tf.expand_dims(a, axis=-1)
-        b = tf.expand_dims(b, axis=-1)
-
-        lab = tf.concat([l, a, b], axis=-1)
-
-        return (gray, lab)
+        return (gray, img)
 
     @tf.function
     def preprocess(self, sample):

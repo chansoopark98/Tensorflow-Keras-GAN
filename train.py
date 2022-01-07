@@ -6,7 +6,7 @@ import argparse
 import time
 import os
 import tensorflow as tf
-import tensorflow_addons as tfa
+from tensorflow.keras.losses import mean_absolute_error
 # LD_PRELOAD="/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4" python train.py
 
 tf.keras.backend.clear_session()
@@ -25,7 +25,7 @@ parser.add_argument("--tensorboard_dir",  type=str,   help="텐서보드 저장 
 parser.add_argument("--use_weightDecay",  type=bool,  help="weightDecay 사용 유무", default=False)
 parser.add_argument("--load_weight",  type=bool,  help="가중치 로드", default=False)
 parser.add_argument("--mixed_precision",  type=bool,  help="mixed_precision 사용", default=True)
-parser.add_argument("--distribution_mode",  type=bool,  help="분산 학습 모드 설정", default=True)
+parser.add_argument("--distribution_mode",  type=bool,  help="분산 학습 모드 설정", default=False)
 
 args = parser.parse_args()
 WEIGHT_DECAY = args.weight_decay
@@ -107,23 +107,23 @@ if DISTRIBUTION_MODE:
         train_data = mirrored_strategy.experimental_distribute_dataset(train_data)
         valid_data = mirrored_strategy.experimental_distribute_dataset(valid_data)
 
-        model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
-        model = tf.keras.Model(model_input, model_output)
-        model.compile(
-            optimizer=optimizer,
-            loss='mae')
+model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
+model = tf.keras.Model(model_input, model_output)
+model.compile(
+    optimizer=optimizer,
+    loss=mean_absolute_error)
 
-        if LOAD_WEIGHT:
-            weight_name = '_1002_best_miou'
-            model.load_weights(CHECKPOINT_DIR + weight_name + '.h5')
+if LOAD_WEIGHT:
+    weight_name = '_1002_best_miou'
+    model.load_weights(CHECKPOINT_DIR + weight_name + '.h5')
 
-        model.summary()
+model.summary()
 
-        history = model.fit(train_data,
-                validation_data=valid_data,
-                steps_per_epoch=steps_per_epoch,
-                validation_steps=validation_steps,
-                epochs=EPOCHS,
-                callbacks=callback)
+history = model.fit(train_data,
+        validation_data=valid_data,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps,
+        epochs=EPOCHS,
+        callbacks=callback)
 
-        model.save_weights(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_final_loss.h5')
+model.save_weights(CHECKPOINT_DIR + '_' + SAVE_MODEL_NAME + '_final_loss.h5')

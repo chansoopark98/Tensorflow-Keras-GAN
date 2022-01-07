@@ -17,321 +17,197 @@ CONV_KERNEL_INITIALIZER = tf.keras.initializers.VarianceScaling(scale=2.0, mode=
 # CONV_KERNEL_INITIALIZER = "he_normal"
 activation = 'swish'
 
-def colorization_model(input_shape=(512, 512, 1), classes=2):
+def colorization_model(input_shape=(512, 512, 1), classes=3):
+    inputs = Input(shape=input_shape, name='image_input')
+    bn_momentum = 0.99
+    # Encoder branch
+    conv1_1 = conv_module(x=inputs, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv1_1')
+    conv1_2 = conv_module(x=conv1_1, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv1_2')
+    conv1_pool = MaxPooling2D((2, 2))(conv1_2) # 128x128@64
 
-    # base.summary()
+    conv2_1 = conv_module(x=conv1_pool, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv2_1')
+    conv2_2 = conv_module(x=conv2_1, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv2_2')
+    conv2_pool = MaxPooling2D((2, 2))(conv2_2)  # 64x64 @128
 
-    """ EfficientNetV2S """
-    base = EfficientNetV2S(input_shape=input_shape, pretrained=None)
-    c1 = base.get_layer('add_1').output  # 1/2 @24
-    c2 = base.get_layer('add_4').output  # 1/4 @48
-    c3 = base.get_layer('add_7').output  # 1/8 @64
-    c4 = base.get_layer('add_20').output  # 1/16 @160
-    x = base.get_layer('add_34').output  # 1/32 @256
+    conv3_1 = conv_module(x=conv2_pool, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv3_1')
+    conv3_2 = conv_module(x=conv3_1, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv3_2')
+    conv3_pool = MaxPooling2D((2, 2))(conv3_2) # 32x32 @256
+
+    conv4_1 = conv_module(x=conv3_pool, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv4_1')
+    conv4_2 = conv_module(x=conv4_1, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv4_2')
+    conv4_pool = MaxPooling2D((2, 2))(conv4_2) # 16x16 @512
+
+    conv5_1 = conv_module(x=conv4_pool, channels=1024, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv5_1')
+    conv5_2 = conv_module(x=conv5_1, channels=1024, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv5_2')
+
+    deconv_5 = deconv_module(conv5_2, channels=512, kernel_size=2, strides=2, prefix='deconv_os16')
+    decoder = Concatenate()([conv4_2, deconv_5])
+    decoder = Dropout(0.4)(decoder)
+
+    decoder = conv_module(x=decoder, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_4_1')
+    decoder = conv_module(x=decoder, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_4_2')
+
+    decoder = deconv_module(decoder, channels=256, kernel_size=2, strides=2, prefix='deconv_os8')
+    decoder = Concatenate()([conv3_2, decoder])
+    decoder = Dropout(0.4)(decoder)
+
+    decoder = conv_module(x=decoder, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_3_1')
+    decoder = conv_module(x=decoder, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_3_2')
+
+    decoder = deconv_module(decoder, channels=128, kernel_size=2, strides=2, prefix='deconv_os4')
+    decoder = Concatenate()([conv2_2, decoder])
+    decoder = Dropout(0.4)(decoder)
+
+    decoder = conv_module(x=decoder, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_2_1')
+    decoder = conv_module(x=decoder, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_2_2')
+
+    decoder = deconv_module(decoder, channels=64, kernel_size=2, strides=2, prefix='deconv_os2')
+    decoder = Concatenate()([conv1_2, decoder])
+    decoder = Dropout(0.4)(decoder)
+
+    decoder = conv_module(x=decoder, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_1_1')
+    decoder = conv_module(x=decoder, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_1_2')
+
+    outputs = Conv2D(classes,
+                    kernel_size=(3, 3),
+                    strides=(1, 1),
+                    use_bias=True,
+                    kernel_initializer='he_normal',
+                    padding='same',
+                    activation='tanh')(decoder)
+
+    return inputs, outputs
 
 
-    """ ResNest-101"""
-    # base = resnest.resnest101(input_shape=input_shape, include_top=False, weights="imagenet", input_tensor=None,
-    #                            classes=1000)
-    # c1 = base.get_layer('stem_act3').output  # 1/2 @ 128
-    # c2 = base.get_layer('stage1_block3_shorcut_act').output  # 1/4 @ 256
-    # c3 = base.get_layer('stage2_block4_shorcut_act').output  # 1/8 @ 512
-    # c4 = base.get_layer('stage3_block23_shorcut_act').output  # 1/16 @ 1024
-    # x = base.get_layer('stage4_block3_shorcut_act').output  # 1/32 @2048
+def conv_module(x, channels, kernel_size=3, strides=1,
+                bn_momentum=0.8, activation='leakyrelu', dropout=0.4, prefix='name'):
+    x = Conv2D(channels,
+                     kernel_size=(kernel_size, kernel_size),
+                     strides=(strides, strides),
+                     use_bias=False,
+                     kernel_initializer='he_normal',
+                     padding='same',
+                     name=prefix+'_conv2d')(x)
+    x = BatchNormalization(momentum=bn_momentum, name=prefix+'_bn')(x)
 
-    model_input = base.input
-
-    ### Decoder C4 branch ###
-    x = Upsampling(x, channel=256)
-    x = Concatenate()([x, c4]) #160
-    x = SepConv_BN(x, filters=256, prefix="decoder_c4_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
-    x = SepConv_BN(x, filters=256, prefix="decoder_c4_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
-
-    ### Decoder C3 branch ###
-    x = Upsampling(x, channel=256)
-    x = Concatenate()([x, c3]) #64
-    x = SepConv_BN(x, filters=224, prefix="decoder_c3_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
-    x = SepConv_BN(x, filters=224, prefix="decoder_c3_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
-
-    ### Decoder C2 branch ###
-    x = Upsampling(x, channel=256)
-    x = Concatenate()([x, c2]) #48
-    x = SepConv_BN(x, filters=128, prefix="decoder_c2_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
-    x = SepConv_BN(x, filters=128, prefix="decoder_c2_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
-
-    ### Decoder C1 branch ###
-    x = Upsampling(x, channel=256)
-    x = Concatenate()([x, c1]) # 24
-    x = SepConv_BN(x, filters=64, prefix="decoder_c1_1", stride=1, kernel_size=3, rate=1, depth_activation=True)
-    x = SepConv_BN(x, filters=64, prefix="decoder_c1_2", stride=1, kernel_size=3, rate=1, depth_activation=True)
-
-    ### Classifier ###
-    x = classifier(x, 2)
-
-    ### Decoder output branch ###
-    model_output = Upsampling(x, channel=2)
-
-    # model_output = green
-    return model_input, model_output
-
-
-def classifier(x, num_classes=2, upper=2, name=None):
-    x = layers.Conv2D(num_classes, 3, strides=1, padding='same',
-                      kernel_initializer=CONV_KERNEL_INITIALIZER, name="classifier")(x)
-    x = tanh(x)
-    return x
-
-
-
-def Conv1x1(x, channel, epsilon=1e-3):
-    x = Conv2D(channel, (1, 1), padding='same',
-                       kernel_regularizer=DECAY,
-                        kernel_initializer=CONV_KERNEL_INITIALIZER,
-                       use_bias=False)(x)
-    x = BN(axis=-1, epsilon=epsilon)(x)
-    x = Activation(activation)(x)
-    return x
-
-def Conv3x3(x, channel, rate, activation='swish'):
-    x = Conv2D(channel, (3, 3), padding='same', dilation_rate=(rate, rate),
-                       kernel_initializer=CONV_KERNEL_INITIALIZER,
-                        kernel_regularizer=DECAY,
-                       use_bias=False)(x)
-    x = BN(axis=-1, epsilon=1e-5)(x)
-    x = Activation(activation)(x)
-
-    return x
-
-def create_conv(filters, kernel_size, inputs, name=None, bn=True, bn_momentum=0.8,
-                dropout=0., padding='same', activation='relu', stride=1):
-    if bn == True:
-        bias = False
-    else:
-        bias = True
-
-    conv = Conv2D(filters, kernel_size, padding=padding, strides=stride, use_bias=bias,
-                  kernel_initializer='he_normal', name=name)(inputs)
-
-    if bn:
-        conv = BatchNormalization(momentum=bn_momentum)(conv)
+    if dropout != 0.:
+        x = Dropout(dropout, name=prefix+'dropout')(x)
 
     if activation == 'leakyrelu':
-        conv = LeakyReLU(alpha=0.2)(conv)
+        x = Activation(LeakyReLU(0.2), name=prefix+'_activation')(x)
     else:
-        conv = Activation(activation)(conv)
+        x = Activation('relu', name=prefix+'_activation')(x)
 
-    if dropout != 0:
-        conv = Dropout(dropout)(conv)
-
-    return conv
-
-def create_deconv(filters, kernel_size, inputs, name=None, bn=False, dropout=0.,
-                  bn_momentum=0.8, padding='same', activation='relu'):
-    if bn == True:
-        bias = False
-    else:
-        bias = True
-    conv = Conv2DTranspose(filters, kernel_size, padding=padding, strides=(2, 2), use_bias=bias,
-                  kernel_initializer='he_normal', name=name)(inputs)
-
-    if bn:
-        conv = BatchNormalization(momentum=bn_momentum)(conv)
-
-    if activation == 'leakyrelu':
-        conv = LeakyReLU(alpha=0.2)(conv)
-    else:
-        conv = Activation(activation)(conv)
-
-    if dropout != 0:
-        conv = Dropout(dropout)(conv)
-
-    return conv
-
-def Upsampling(x, channel):
-    x = UpSampling2D((2, 2), interpolation='bilinear')(x)
     return x
 
-
-
-def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3):
-    if stride == 1:
-        depth_padding = 'same'
-    else:
-        kernel_size_effective = kernel_size + (kernel_size - 1) * (rate - 1)
-        pad_total = kernel_size_effective - 1
-        pad_beg = pad_total // 2
-        pad_end = pad_total - pad_beg
-        x = ZeroPadding2D((pad_beg, pad_end))(x)
-        depth_padding = 'valid'
-
-    if not depth_activation:
-        x = Activation(activation)(x)
-    x = DepthwiseConv2D((kernel_size, kernel_size), strides=(stride, stride), dilation_rate=(rate, rate),
-                        kernel_regularizer=DECAY,
-                        padding=depth_padding, use_bias=False, name=prefix + '_depthwise')(x)
-    # x = BatchNormalization(name=prefix + '_depthwise_BN', epsilon=epsilon)(x)
-    x = BN(name=prefix + '_depthwise_BN', epsilon=epsilon)(x)
-    if depth_activation:
-        x = Activation(activation)(x)
-    x = Conv2D(filters, (1, 1), padding='same',
-               kernel_regularizer=DECAY,
-               use_bias=False, name=prefix + '_pointwise')(x)
-    # x = BatchNormalization(name=prefix + '_pointwise_BN', epsilon=epsilon)(x)
-    x = BN(name=prefix + '_pointwise_BN', epsilon=epsilon)(x)
-    if depth_activation:
-        x = Activation(activation)(x)
+def deconv_module(x, channels, kernel_size=2, strides=2, prefix='name'):
+    x = Conv2DTranspose(channels,
+                      kernel_size=(kernel_size, kernel_size),
+                      strides=(strides, strides),
+                      use_bias=False,
+                      kernel_initializer='he_normal',
+                      name=prefix+'_deconv',
+                      padding='same')(x)
 
     return x
 
 def build_generator(input_shape, output_channels):
-    # inputs = Input(shape=(256, 256, 1), name='image_input')
-    init = 'he_normal'
-    momentum = 0.8
+    inputs = Input(shape=input_shape, name='image_input')
+    bn_momentum = 0.99
+    # Encoder branch
+    conv1_1 = conv_module(x=inputs, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv1_1')
+    conv1_2 = conv_module(x=conv1_1, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv1_2')
+    conv1_pool = MaxPooling2D((2, 2))(conv1_2) # 128x128@64
 
-    base = resnest.resnest50(input_shape=input_shape, include_top=False, weights=None, input_tensor=None)
-    inputs = base.input
-    c1 = base.get_layer('stem_act3').output # 128
-    c2 = base.get_layer('stage1_block3_shorcut_act').output # 256
-    c3 = base.get_layer('stage2_block4_shorcut_act').output # 512
-    c4 = base.get_layer('stage3_block6_shorcut_act').output # 1024
-    x = base.get_layer('stage4_block3_shorcut_act').output # 2048
+    conv2_1 = conv_module(x=conv1_pool, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv2_1')
+    conv2_2 = conv_module(x=conv2_1, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv2_2')
+    conv2_pool = MaxPooling2D((2, 2))(conv2_2)  # 64x64 @128
 
+    conv3_1 = conv_module(x=conv2_pool, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv3_1')
+    conv3_2 = conv_module(x=conv3_1, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv3_2')
+    conv3_pool = MaxPooling2D((2, 2))(conv3_2) # 32x32 @256
 
-    convtrans31 = Conv2DTranspose(512,
-                                  kernel_size=(3, 3),
-                                  strides=(2, 2),
-                                  use_bias=False,
-                                  kernel_initializer=init,
-                                  padding='same')(x)
-    # convtrans31 = Conv2D(512,
-    #                       kernel_size=(1, 1),
-    #                       strides=(1, 1),
-    #                       use_bias=False,
-    #                       kernel_initializer=init,
-    #                       padding='same')(x)
-    # convtrans31 = BatchNormalization(momentum=momentum)(convtrans31)
-    # convtrans31 = Activation(LeakyReLU(0.2))(convtrans31)
-    # convtrans31 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans31)
+    conv4_1 = conv_module(x=conv3_pool, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv4_1')
+    conv4_2 = conv_module(x=conv4_1, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv4_2')
+    conv4_pool = MaxPooling2D((2, 2))(conv4_2) # 16x16 @512
 
+    conv5_1 = conv_module(x=conv4_pool, channels=1024, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv5_1')
+    conv5_2 = conv_module(x=conv5_1, channels=1024, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='conv5_2')
 
-    merge1 = Concatenate()([convtrans31, c4])
-    merge1 = Dropout(0.3)(merge1)
+    deconv_5 = deconv_module(conv5_2, channels=512, kernel_size=2, strides=2, prefix='deconv_os16')
+    decoder = Concatenate()([conv4_2, deconv_5])
+    decoder = Dropout(0.4)(decoder)
 
-    deconv31 = Conv2D(512,
-                      kernel_size=(3, 3),
-                      strides=(1, 1),
-                      use_bias=False,
-                      kernel_initializer=init,
-                      padding='same')(merge1)
-    deconv31 = BatchNormalization(momentum=momentum)(deconv31)
-    deconv31 = Dropout(0.3)(deconv31)
-    deconv31 = Activation(LeakyReLU(0.2))(deconv31)
+    decoder = conv_module(x=decoder, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_4_1')
+    decoder = conv_module(x=decoder, channels=512, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_4_2')
 
-    convtrans21 = Conv2DTranspose(256,
-                                  kernel_size=(3, 3),
-                                  strides=(2, 2),
-                                  use_bias=False,
-                                  kernel_initializer=init,
-                                  padding='same')(deconv31)
-    # convtrans21 = Conv2D(256,
-    #                       kernel_size=(1, 1),
-    #                       strides=(1, 1),
-    #                       use_bias=False,
-    #                       kernel_initializer=init,
-    #                       padding='same')(deconv31)
-    # convtrans21 = BatchNormalization(momentum=momentum)(convtrans21)
-    # convtrans21 = Activation(LeakyReLU(0.2))(convtrans21)
-    # convtrans21 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans21)
+    decoder = deconv_module(decoder, channels=256, kernel_size=2, strides=2, prefix='deconv_os8')
+    decoder = Concatenate()([conv3_2, decoder])
+    decoder = Dropout(0.4)(decoder)
 
-    merge2 = Concatenate()([convtrans21, c3])
-    merge2 = Dropout(0.3)(merge2)
+    decoder = conv_module(x=decoder, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_3_1')
+    decoder = conv_module(x=decoder, channels=256, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                activation='leakyrelu', dropout=0.0, prefix='decoder_3_2')
 
-    deconv21 = Conv2D(256,
-                      kernel_size=(3, 3),
-                      strides=(1, 1),
-                      use_bias=False,
-                      kernel_initializer=init,
-                      padding='same')(merge2)
-    deconv21 = BatchNormalization(momentum=momentum)(deconv21)
-    deconv21 = Dropout(0.3)(deconv21)
-    deconv21 = Activation(LeakyReLU(0.2))(deconv21)
+    decoder = deconv_module(decoder, channels=128, kernel_size=2, strides=2, prefix='deconv_os4')
+    decoder = Concatenate()([conv2_2, decoder])
+    decoder = Dropout(0.4)(decoder)
 
-    convtrans11 = Conv2DTranspose(128,
-                                  kernel_size=(3, 3),
-                                  strides=(2, 2),
-                                  use_bias=False,
-                                  kernel_initializer=init,
-                                  padding='same')(deconv21)
-    # convtrans11 = Conv2D(128,
-    #                       kernel_size=(1, 1),
-    #                       strides=(1, 1),
-    #                       use_bias=False,
-    #                       kernel_initializer=init,
-    #                       padding='same')(deconv21)
-    # convtrans11 = BatchNormalization(momentum=momentum)(convtrans11)
-    # convtrans11 = Activation(LeakyReLU(0.2))(convtrans11)
-    # convtrans11 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans11)
+    decoder = conv_module(x=decoder, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_2_1')
+    decoder = conv_module(x=decoder, channels=128, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_2_2')
 
-    merge3 = Concatenate()([convtrans11, c2])
-    merge3 = Dropout(0.3)(merge3)
+    decoder = deconv_module(decoder, channels=64, kernel_size=2, strides=2, prefix='deconv_os2')
+    decoder = Concatenate()([conv1_2, decoder])
+    decoder = Dropout(0.4)(decoder)
 
-    deconv11 = Conv2D(128,
-                      kernel_size=(3, 3),
-                      strides=(1, 1),
-                      use_bias=False,
-                      kernel_initializer=init,
-                      padding='same')(merge3)
-    deconv11 = BatchNormalization(momentum=momentum)(deconv11)
-    deconv11 = Dropout(0.3)(deconv11)
-    deconv11 = Activation(LeakyReLU(0.2))(deconv11)
+    decoder = conv_module(x=decoder, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_1_1')
+    decoder = conv_module(x=decoder, channels=64, kernel_size=3, strides=1, bn_momentum=bn_momentum,
+                          activation='leakyrelu', dropout=0.0, prefix='decoder_1_2')
 
-    convtrans1 = Conv2DTranspose(64,
-                                 kernel_size=(3, 3),
-                                 strides=(2, 2),
-                                 use_bias=False,
-                                 kernel_initializer=init,
-                                 padding='same')(deconv11)
-    # convtrans1 = Conv2D(128,
-    #                       kernel_size=(1, 1),
-    #                       strides=(1, 1),
-    #                       use_bias=False,
-    #                       kernel_initializer=init,
-    #                       padding='same')(deconv11)
-    # convtrans1 = BatchNormalization(momentum=momentum)(convtrans1)
-    # convtrans1 = Activation(LeakyReLU(0.2))(convtrans1)
-    # convtrans1 = UpSampling2D((2, 2), interpolation='bilinear')(convtrans1)
-
-    merge4 = Concatenate()([convtrans1, c1])
-    merge4 = Dropout(0.3)(merge4)
-
-    deconv1 = Conv2D(64,
-                     kernel_size=(3, 3),
-                     strides=(1, 1),
-                     use_bias=False,
-                     kernel_initializer=init,
-                     padding='same')(merge4)
-    deconv1 = BatchNormalization(momentum=momentum)(deconv1)
-    deconv1 = Dropout(0.3)(deconv1)
-    deconv1 = Activation(LeakyReLU(0.2))(deconv1)
-
-    output = Conv2DTranspose(64,
-                                 kernel_size=(3, 3),
-                                 strides=(2, 2),
-                                 use_bias=False,
-                                 kernel_initializer=init,
-                                 padding='same')(deconv1)
-    output = BatchNormalization(momentum=momentum)(output)
-    output = Activation(LeakyReLU(0.2))(output)
-
-    output = Conv2D(output_channels,
+    outputs = Conv2D(output_channels,
                     kernel_size=(3, 3),
                     strides=(1, 1),
-                    use_bias=False,
-                    kernel_initializer=init,
+                    use_bias=True,
+                    kernel_initializer='he_normal',
                     padding='same',
-                    activation='tanh')(output)
+                    activation='tanh')(decoder)
 
-    return inputs, output
+
+    return inputs, outputs
 
 def build_discriminator(image_size=(512, 512, 3), name='discriminator'):
     inputs = Input(shape=image_size, name='image_input')

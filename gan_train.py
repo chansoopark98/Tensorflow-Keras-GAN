@@ -14,7 +14,7 @@ import tensorflow_datasets as tfds
 
 from utils.datasets import Dataset
 from model.model_builder import base_model
-from model.model import Conv3x3
+from model.model import conv_module
 
 BATCH_SIZE = 8
 EPOCHS = 50
@@ -94,15 +94,15 @@ class GAN():
     def build_discriminator(self):
 
         inputs = Input(shape=(512, 512, 2))
-        x = Conv3x3(inputs, channel=64, rate=1, activation='relu')
+        x = conv_module(inputs, channel=64, rate=1, activation='relu')
         x = MaxPooling2D()(x)
-        x = Conv3x3(x, channel=128, rate=1, activation='relu')
+        x = conv_module(x, channel=128, rate=1, activation='relu')
         x = MaxPooling2D()(x)
-        x = Conv3x3(x, channel=256, rate=1, activation='relu')
+        x = conv_module(x, channel=256, rate=1, activation='relu')
         x = MaxPooling2D()(x)
-        x = Conv3x3(x, channel=512, rate=1, activation='relu')
+        x = conv_module(x, channel=512, rate=1, activation='relu')
         x = MaxPooling2D()(x)
-        x = Conv3x3(x, channel=512, rate=1, activation='relu')
+        x = conv_module(x, channel=512, rate=1, activation='relu')
 
         x = Flatten()(x)
         x = Dense(1, activation='sigmoid')(x)

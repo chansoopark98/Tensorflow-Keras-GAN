@@ -14,7 +14,7 @@ import tensorflow_datasets as tfds
 
 from utils.datasets import Dataset
 from model.model_builder import base_model
-from model.model import Conv3x3
+from model.model import conv_module
 
 BATCH_SIZE = 1
 EPOCHS = 50

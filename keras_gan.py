@@ -151,15 +151,17 @@ if __name__ == '__main__':
             img = features['image']
             shape = img.shape
 
+            # data augmentation
+            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+                img = tf.image.flip_left_right(img)
+
             img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
             gray = color.rgb2gray(img)
             gray = tf.cast(gray, tf.float32)
             gray /= 127.5
             gray -= 1.
 
-            # data augmentation
-            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-                img = tf.image.flip_left_right(img)
+
 
             img /= 255.
 

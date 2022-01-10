@@ -3,7 +3,7 @@ from model.ResNest import resnest
 from tensorflow.keras import layers
 from tensorflow.keras.layers import (
     UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout, concatenate,
-    DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose)
+    DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose, GlobalAveragePooling2D)
 from tensorflow.keras.activations import tanh, relu
 import tensorflow as tf
 from tensorflow.keras.models import Model
@@ -118,15 +118,24 @@ def conv_module(x, channels, kernel_size=3, strides=1,
 
     return x
 
-def deconv_module(x, channels, kernel_size=2, strides=2, prefix='name'):
-    x = Conv2DTranspose(channels,
-                      kernel_size=(kernel_size, kernel_size),
-                      strides=(strides, strides),
-                      use_bias=False,
-                      kernel_initializer='he_normal',
-                      name=prefix+'_deconv',
-                      padding='same')(x)
-
+def deconv_module(x, channels, kernel_size=2, strides=2, bn_momentum=0.8, prefix='name'):
+    # x = Conv2DTranspose(channels,
+    #                   kernel_size=(kernel_size, kernel_size),
+    #                   strides=(strides, strides),
+    #                   use_bias=False,
+    #                   kernel_initializer='he_normal',
+    #                   name=prefix+'_upsampling',
+    #                   padding='same')(x)
+    x = UpSampling2D((2, 2), interpolation='bilinear', name=prefix+'_upsampling')(x)
+    x = Conv2D(channels,
+                     kernel_size=(3, 3),
+                     strides=(1, 1),
+                     use_bias=False,
+                     kernel_initializer='he_normal',
+                     padding='same',
+                     name=prefix+'_conv2d')(x)
+    x = BatchNormalization(momentum=bn_momentum, name=prefix+'_bn')(x)
+    x = Activation(LeakyReLU(0.2), name=prefix + '_activation')(x)
     return x
 
 def build_generator(input_shape, output_channels):
@@ -262,11 +271,14 @@ def build_discriminator(image_size=(512, 512, 3), name='discriminator'):
     conv51 = Activation(LeakyReLU(0.2))(conv51)
     conv51 = Dropout(0.4)(conv51)
 
-    output = Flatten()(conv51)
+    output = GlobalAveragePooling2D()(conv51) # add gap
+
+    output = Flatten()(output)
 
     output = Dense(1,
                    kernel_initializer=init,
                    use_bias=True)(output)
+
     output = Activation('sigmoid')(output)
 
     return inputs, output

@@ -9,6 +9,12 @@ import tensorflow as tf
 from tqdm import tqdm
 from utils.datasets import Dataset
 import tensorflow_io as tfio
+from skimage import color
+
+def demo_prepare(path):
+    img = tf.io.read_file(path)
+    img = tf.image.decode_image(img, channels=3)
+    return (img)
 
 
 tf.keras.backend.clear_session()
@@ -60,12 +66,26 @@ dataset = Dataset(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE, mode='validation', datase
 test_steps = dataset.number_valid // BATCH_SIZE
 test_set = dataset.get_testData(dataset.valid_data)
 
+# prepare validation dataset
+prediction_path = './colorization_test'
+os.makedirs(prediction_path, exist_ok=True)
+filenames = os.listdir(prediction_path)
+filenames.sort()
+demo_imgs = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
+demo_test = demo_imgs.map(demo_prepare)
+demo_test = demo_test.batch(1)
+demo_steps = len(filenames) // 1
+demo_path = './colorization_test/'
+
+os.makedirs(demo_path, exist_ok=True)
+
+
 # model = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 model_input, model_output = base_model(image_size=IMAGE_SIZE, num_classes=num_classes)
 model = tf.keras.Model(model_input, model_output)
 # weight_name = '_1208_best_loss'
 
-weight_name = '_0107_best_loss'
+weight_name = '_0108_best_val_loss'
 # weight_name = '_1211_best_val_loss'
 model.load_weights(CHECKPOINT_DIR + weight_name + '.h5',by_name=True)
 model.summary()
@@ -79,8 +99,14 @@ batch_index = 1
 save_path = './checkpoints/results/'+SAVE_MODEL_NAME+'/'
 os.makedirs(save_path, exist_ok=True)
 
-for input_y, gt in tqdm(test_set, total=test_steps):
-    pred = model.predict_on_batch(input_y)
+for input_y in tqdm(demo_test, total=demo_steps):
+    img = tf.image.resize_with_pad(input_y, IMAGE_SIZE[0], IMAGE_SIZE[1])
+    gray = color.rgb2gray(img)
+    gray = tf.cast(gray, tf.float32)
+    gray /= 127.5
+    gray -= 1.
+
+    pred = model.predict_on_batch(gray)
     pred = tf.cast(pred, tf.float32)
 
     for i in range(len(pred)):
@@ -102,7 +128,7 @@ for input_y, gt in tqdm(test_set, total=test_steps):
 
 
         rows = 1
-        cols = 2
+        cols = 1
         fig = plt.figure()
 
         ax0 = fig.add_subplot(rows, cols, 1)
@@ -110,12 +136,12 @@ for input_y, gt in tqdm(test_set, total=test_steps):
         ax0.set_title('Prediction')
         ax0.axis("off")
 
-        ax1 = fig.add_subplot(rows, cols, 2)
-        ax1.imshow(gt[i])
-        ax1.set_title('Groundtruth')
-        ax1.axis("off")
+        # ax1 = fig.add_subplot(rows, cols, 2)
+        # ax1.imshow(gt[i])
+        # ax1.set_title('Groundtruth')
+        # ax1.axis("off")
 
-        plt.savefig(save_path + str(batch_index) + 'output.png', dpi=300)
+        plt.savefig(demo_path + str(batch_index) + 'output.png', dpi=300)
         # pred = tf.cast(pred, tf.int32)
         # plt.show()
         # tf.keras.preprocessing.image.save_img(save_path + str(batch_index) + '_1_input.jpg', output)

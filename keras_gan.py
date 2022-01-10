@@ -11,6 +11,7 @@ import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import tensorflow_io as tfio
 from skimage import color
+import time
 # LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4.3.0"
 
 
@@ -68,31 +69,61 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     return model_gen, model_dis, model_gan
 
+def rgb2gray(img):
+    gray = color.rgb2gray(img)
+    gray = tf.cast(gray, tf.float32)
+    gray /= 127.5
+    gray -= 1.
+    return gray
+
+def rgb2lab(img):
+    img /= 255.
+    lab = tfio.experimental.color.rgb_to_lab(img)
+
+    l = lab[:, :, :, 0]
+    l = (l - 50.) / 100.
+
+    a = lab[:, :, :, 1]
+    a = a / 110.
+
+    b = lab[:, :, :, 2]
+    b = b / 110.
+
+    l = tf.expand_dims(l, axis=-1)
+    a = tf.expand_dims(a, axis=-1)
+    b = tf.expand_dims(b, axis=-1)
+
+    lab = tf.concat([l, a, b], axis=-1)
+
+    return lab
+
 def demo_prepare(path):
     img = tf.io.read_file(path)
     img = tf.image.decode_image(img, channels=3)
-
     return (img)
 
-
 if __name__ == '__main__':
-    EPOCHS = 101
+    EPOCHS = 1
     BATCH_SIZE = 32
-    # LEARNING_RATE = 0.0005
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
-    INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 3)
+    INPUT_SHAPE_GEN = (None, None, 1)
+    INPUT_SHAPE_DIS = (None, None, 3)
+    SCALE_STEP = [64, 128, 256]
     GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
-    # WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
-    WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen_'
-    # WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis.h5'
-    WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis_'
-    # WEIGHTS_GAN = './checkpoints/YUV_GAN_Gan.h5'
-    WEIGHTS_GAN = './checkpoints/YUV_GAN_Gan_'
+    CHECKPOINT_DIR = './checkpoints'
+    CURRENT_DATE = str(time.strftime('%m%d', time.localtime(time.time())))
+    WEIGHTS_GEN = CHECKPOINT_DIR + '/' + CURRENT_DATE + '/GEN'
+    WEIGHTS_DIS = CHECKPOINT_DIR + '/' + CURRENT_DATE + '/DIS'
+    WEIGHTS_GAN = CHECKPOINT_DIR + '/' + CURRENT_DATE + '/GAN'
+    DEMO_OUTPUT = './demo_outputs/' + CURRENT_DATE + '/'
+    os.makedirs(DEMO_OUTPUT, exist_ok=True)
+    os.makedirs(WEIGHTS_GEN, exist_ok=True)
+    os.makedirs(WEIGHTS_DIS, exist_ok=True)
+    os.makedirs(WEIGHTS_GAN, exist_ok=True)
 
     model_gen, model_dis, model_gan = create_models(
         input_shape_gen=INPUT_SHAPE_GEN,
@@ -102,12 +133,12 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    # model_gen.load_weights(WEIGHTS_GEN + '0.h5')
-    # model_dis.load_weights(WEIGHTS_DIS + '0.h5')
-    # model_gan.load_weights(WEIGHTS_GAN + '0.h5')
+    # model_gen.load_weights(WEIGHTS_GEN + '.h5')
+    # model_dis.load_weights(WEIGHTS_DIS + '.h5')
+    # model_gan.load_weights(WEIGHTS_GAN + '.h5')
 
     celebA_hq = tfds.load('CustomCelebahq',
-                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+                           data_dir=DATASET_DIR, split='train[:1%]', shuffle_files=True)
 
     # celebA = tfds.load('CustomCeleba',
     #                        data_dir=DATASET_DIR, split='train[:20%]', shuffle_files=True)
@@ -129,129 +160,130 @@ if __name__ == '__main__':
     demo_test = demo_imgs.map(demo_prepare)
     demo_test = demo_test.batch(1)
     demo_steps = len(filenames) // 1
-    demo_path = './demo_outputs/' + 'demo/'
-    os.makedirs(demo_path, exist_ok=True)
 
     l_cent = 50.
     l_norm = 100.
     ab_norm = 110.
 
-    for epoch in range(EPOCHS):
-        pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
-        batch_counter = 0
-        toggle = True
-        dis_res = 0
-        index = 0
-        for features in pbar:
-            batch_counter += 1
-            # ---------------------
-            #  Train Discriminator
-            # ---------------------
-            # img = tf.cast(features['image'], tf.float32)
-            img = features['image']
-            shape = img.shape
+    for steps in range(len(SCALE_STEP)):
+        IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
 
-            # data augmentation
-            if tf.random.uniform([], minval=0, maxval=1) > 0.5:
-                img = tf.image.flip_left_right(img)
+        for epoch in range(EPOCHS):
+            pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
+            batch_counter = 0
+            toggle = True
+            dis_res = 0
+            index = 0
+            for features in pbar:
+                batch_counter += 1
+                # ---------------------
+                #  Train Discriminator
+                # ---------------------
+                # img = tf.cast(features['image'], tf.float32)
+                img = features['image']
+                shape = img.shape
 
-            img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
-            gray = color.rgb2gray(img)
-            gray = tf.cast(gray, tf.float32)
-            gray /= 127.5
-            gray -= 1.
+                # data augmentation
+                if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+                    img = tf.image.flip_left_right(img)
 
+                img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
+                gray = rgb2gray(img)
+                # gray = color.rgb2gray(img)
+                # gray = tf.cast(gray, tf.float32)
+                # gray /= 127.5
+                # gray -= 1.
 
+                lab = rgb2lab(img)
+                # img /= 255.
+                # lab = tfio.experimental.color.rgb_to_lab(img)
+                #
+                # l = lab[:, :, :, 0]
+                # l = (l - l_cent) / l_norm
+                #
+                # a = lab[:, :, :, 1]
+                # a = a / ab_norm
+                #
+                # b = lab[:, :, :, 2]
+                # b = b / ab_norm
+                #
+                # l = tf.expand_dims(l, axis=-1)
+                # a = tf.expand_dims(a, axis=-1)
+                # b = tf.expand_dims(b, axis=-1)
+                #
+                # lab = tf.concat([l, a, b], axis=-1)
 
-            img /= 255.
+                # # original
+                # if batch_counter % 2 == 0:
+                #     toggle = not toggle
+                #     if toggle:
+                #         # x_dis = tf.concat((model_gen.predict(l), l), axis=3)
+                #         x_dis = model_gen.predict(l)
+                #         y_dis = tf.zeros((shape[0], 1))
+                #     else:
+                #         # x_dis = tf.concat((l, ab), axis=3)
+                #         x_dis = ab
+                #         y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+                #
+                #     dis_res = model_dis.train_on_batch(x_dis, y_dis)
 
-            lab = tfio.experimental.color.rgb_to_lab(img)
+                # test
 
-            l = lab[:, :, :, 0]
-            l = (l - l_cent) / l_norm
+                fake_x_dis = model_gen.predict(gray)
+                fake_y_dis = tf.zeros((shape[0], 1))
+                d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
 
-            a = lab[:, :, :, 1]
-            a = a / ab_norm
+                real_x_dis = lab
+                real_y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
 
-            b = lab[:, :, :, 2]
-            b = b / ab_norm
+                d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
+                dis_res = 0.5 * tf.add(d_fake, d_real)
 
-            l = tf.expand_dims(l, axis=-1)
-            a = tf.expand_dims(a, axis=-1)
-            b = tf.expand_dims(b, axis=-1)
+                model_dis.trainable = False
+                x_gen = gray
+                y_gen = tf.ones((shape[0], 1))
+                x_output = lab
+                gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
+                model_dis.trainable = True
 
-            lab = tf.concat([l, a, b], axis=-1)
+                pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
+                                        gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
 
-            # # original
-            # if batch_counter % 2 == 0:
-            #     toggle = not toggle
-            #     if toggle:
-            #         # x_dis = tf.concat((model_gen.predict(l), l), axis=3)
-            #         x_dis = model_gen.predict(l)
-            #         y_dis = tf.zeros((shape[0], 1))
-            #     else:
-            #         # x_dis = tf.concat((l, ab), axis=3)
-            #         x_dis = ab
-            #         y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
-            #
-            #     dis_res = model_dis.train_on_batch(x_dis, y_dis)
+            # if epoch % 5 == 0:
+            model_gen.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+            model_dis.save_weights(WEIGHTS_DIS + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+            model_gan.save_weights(WEIGHTS_GAN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
 
-            # test
+            os.makedirs(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch), exist_ok=True)
 
-            fake_x_dis = model_gen.predict(gray)
-            fake_y_dis = tf.zeros((shape[0], 1))
-            d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
+            # validation
+            for img in demo_test:
+                img = tf.image.resize_with_pad(img, IMAGE_SHAPE[0], IMAGE_SHAPE[1])
+                gray = rgb2gray(img)
+                # gray = color.rgb2gray(img)
+                # gray = tf.cast(gray, tf.float32)
+                # gray /= 127.5
+                # gray -= 1.
 
-            real_x_dis = lab
-            real_y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+                pred_ab = model_gen.predict(gray)
 
-            d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
-            dis_res = 0.5 * tf.add(d_fake, d_real)
+                for i in range(len(pred_ab)):
+                    batch_l = pred_ab[i][:, :, 0]
+                    batch_a = pred_ab[i][:, :, 1]
+                    batch_b = pred_ab[i][:, :, 2]
 
-            model_dis.trainable = False
-            x_gen = gray
-            y_gen = tf.ones((shape[0], 1))
-            x_output = lab
-            gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
-            model_dis.trainable = True
+                    batch_l = batch_l * l_norm + l_cent
+                    batch_a = batch_a * ab_norm
+                    batch_b = batch_b * ab_norm
 
-            pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
-                                    gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
+                    batch_l = tf.expand_dims(batch_l, -1)
+                    batch_a = tf.expand_dims(batch_a, -1)
+                    batch_b = tf.expand_dims(batch_b, -1)
 
-        # if epoch % 5 == 0:
-        model_gen.save_weights(WEIGHTS_GEN + str(epoch) + '.h5', overwrite=True)
-        model_dis.save_weights(WEIGHTS_DIS + str(epoch) + '.h5', overwrite=True)
-        model_gan.save_weights(WEIGHTS_GAN + str(epoch) + '.h5', overwrite=True)
+                    pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
+                    pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
 
-        os.makedirs(demo_path + str(epoch), exist_ok=True)
+                    plt.imshow(pred_lab)
 
-        # validation
-        for img in demo_test:
-            img = tf.image.resize_with_pad(img, INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1])
-            gray = color.rgb2gray(img)
-            gray = tf.cast(gray, tf.float32)
-            gray /= 127.5
-            gray -= 1.
-
-            pred_ab = model_gen.predict(gray)
-
-            for i in range(len(pred_ab)):
-                batch_l = pred_ab[i][:, :, 0]
-                batch_a = pred_ab[i][:, :, 1]
-                batch_b = pred_ab[i][:, :, 2]
-
-                batch_l = batch_l * l_norm + l_cent
-                batch_a = batch_a * ab_norm
-                batch_b = batch_b * ab_norm
-
-                batch_l = tf.expand_dims(batch_l, -1)
-                batch_a = tf.expand_dims(batch_a, -1)
-                batch_b = tf.expand_dims(batch_b, -1)
-
-                pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
-                pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
-
-                plt.imshow(pred_lab)
-
-                plt.savefig(demo_path + str(epoch) + '/'+ str(index)+'.png', dpi=200)
-                index +=1
+                    plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
+                    index +=1

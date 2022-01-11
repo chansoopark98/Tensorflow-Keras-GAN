@@ -119,23 +119,25 @@ def conv_module(x, channels, kernel_size=3, strides=1,
     return x
 
 def deconv_module(x, channels, kernel_size=2, strides=2, bn_momentum=0.8, prefix='name'):
-    # x = Conv2DTranspose(channels,
-    #                   kernel_size=(kernel_size, kernel_size),
-    #                   strides=(strides, strides),
-    #                   use_bias=False,
-    #                   kernel_initializer='he_normal',
-    #                   name=prefix+'_upsampling',
-    #                   padding='same')(x)
-    x = UpSampling2D((2, 2), interpolation='bilinear', name=prefix+'_upsampling')(x)
-    x = Conv2D(channels,
-                     kernel_size=(3, 3),
-                     strides=(1, 1),
-                     use_bias=False,
-                     kernel_initializer='he_normal',
-                     padding='same',
-                     name=prefix+'_conv2d')(x)
+    x = Conv2DTranspose(channels,
+                      kernel_size=(kernel_size, kernel_size),
+                      strides=(strides, strides),
+                      use_bias=False,
+                      kernel_initializer='he_normal',
+                      name=prefix+'_upsampling',
+                      padding='same')(x)
     x = BatchNormalization(momentum=bn_momentum, name=prefix+'_bn')(x)
     x = Activation(LeakyReLU(0.2), name=prefix + '_activation')(x)
+    # x = UpSampling2D((2, 2), interpolation='bilinear', name=prefix+'_upsampling')(x)
+    # x = Conv2D(channels,
+    #                  kernel_size=(3, 3),
+    #                  strides=(1, 1),
+    #                  use_bias=False,
+    #                  kernel_initializer='he_normal',
+    #                  padding='same',
+    #                  name=prefix+'_conv2d')(x)
+    # x = BatchNormalization(momentum=bn_momentum, name=prefix+'_bn')(x)
+    # x = Activation(LeakyReLU(0.2), name=prefix + '_activation')(x)
     return x
 
 def build_generator(input_shape, output_channels):

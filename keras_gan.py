@@ -103,15 +103,15 @@ def demo_prepare(path):
     return (img)
 
 if __name__ == '__main__':
-    EPOCHS = 1
+    EPOCHS = 30
     BATCH_SIZE = 32
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
-    INPUT_SHAPE_GEN = (None, None, 1)
-    INPUT_SHAPE_DIS = (None, None, 3)
-    SCALE_STEP = [64, 128, 256]
+    INPUT_SHAPE_GEN = (256, 256, 1)
+    INPUT_SHAPE_DIS = (256, 256, 3)
+    SCALE_STEP = [256]
     GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
     CHECKPOINT_DIR = './checkpoints'
@@ -138,13 +138,13 @@ if __name__ == '__main__':
     # model_gan.load_weights(WEIGHTS_GAN + '.h5')
 
     celebA_hq = tfds.load('CustomCelebahq',
-                           data_dir=DATASET_DIR, split='train[:1%]', shuffle_files=True)
+                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
-    # celebA = tfds.load('CustomCeleba',
-    #                        data_dir=DATASET_DIR, split='train[:20%]', shuffle_files=True)
-
-    # train_data = celebA_hq.concatenate(celebA)
-    train_data = celebA_hq
+    celebA = tfds.load('CustomCeleba',
+                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+    #
+    train_data = celebA_hq.concatenate(celebA)
+    # train_data = celebA_hq
 
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)

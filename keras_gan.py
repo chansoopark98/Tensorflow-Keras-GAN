@@ -112,7 +112,7 @@ if __name__ == '__main__':
     INPUT_SHAPE_GEN = (512, 512, 1)
     INPUT_SHAPE_DIS = (512, 512, 3)
     SCALE_STEP = [256]
-    GEN_OUTPUT_CHANNEL = 3
+    GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
     CHECKPOINT_DIR = './checkpoints'
     CURRENT_DATE = str(time.strftime('%m%d', time.localtime(time.time())))
@@ -165,8 +165,8 @@ if __name__ == '__main__':
     for steps in range(len(SCALE_STEP)):
         IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
 
-        fake_y_dis = tf.zeros((shape[0], 1))
-        real_y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
+        fake_y_dis = tf.zeros((BATCH_SIZE, 1))
+        real_y_dis = tf.random.uniform(shape=[BATCH_SIZE], minval=0.9, maxval=1)
 
         for epoch in range(EPOCHS):
             pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
@@ -181,7 +181,7 @@ if __name__ == '__main__':
                 # ---------------------
                 # img = tf.cast(features['image'], tf.float32)
                 img = features['image']
-                shape = img.shape
+                
 
                 # data augmentation
                 if tf.random.uniform([], minval=0, maxval=1) > 0.5:
@@ -206,7 +206,7 @@ if __name__ == '__main__':
                 model_dis.trainable = False
                 x_gen = r_channel
 
-                y_gen = tf.ones((shape[0], 1))
+                y_gen = tf.ones((BATCH_SIZE, 1))
                 x_output = img
 
                 gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])

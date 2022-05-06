@@ -37,8 +37,8 @@ def create_model_gan(input_shape, generator, discriminator):
     input = Input(input_shape)
 
     gen_out = generator(input)
-    # dis_out = discriminator(concatenate([gen_out, input], axis=3))
-    dis_out = discriminator(gen_out)
+    dis_out = discriminator(concatenate([input, gen_out], axis=3))
+    # dis_out = discriminator(gen_out)
 
     model = tf.keras.Model(inputs=[input], outputs=[dis_out, gen_out], name='dcgan')
     return model
@@ -193,9 +193,11 @@ if __name__ == '__main__':
 
                 r_channel = img[:, :, :, 0]
 
-                fake_x_dis = model_gen.predict(r_channel)
-
+                pred_gb = model_gen.predict(r_channel)
+                
+                fake_x_dis = tf.concat([r_channel, pred_gb], axis=-1)
                 real_x_dis = img
+                
                 d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
                 d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
 

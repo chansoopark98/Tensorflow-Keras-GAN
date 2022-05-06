@@ -1,3 +1,4 @@
+from torch import R
 from model.model_builder import build_dis, build_gen
 import tensorflow as tf
 import os
@@ -109,8 +110,8 @@ if __name__ == '__main__':
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
-    INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 3)
+    INPUT_SHAPE_GEN = (512, 512, 1)
+    INPUT_SHAPE_DIS = (512, 512, 2)
     SCALE_STEP = [256]
     GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'
@@ -140,11 +141,11 @@ if __name__ == '__main__':
     celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
-    celebA = tfds.load('CustomCeleba',
-                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+    # celebA = tfds.load('CustomCeleba',
+    #                        data_dir=DATASET_DIR, split='train', shuffle_files=True)
     #
-    train_data = celebA_hq.concatenate(celebA)
-    # train_data = celebA_hq
+    # train_data = celebA_hq.concatenate(celebA)
+    train_data = celebA_hq
 
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
     print("학습 데이터 개수", number_train)
@@ -161,12 +162,12 @@ if __name__ == '__main__':
     demo_test = demo_test.batch(1)
     demo_steps = len(filenames) // 1
 
-    l_cent = 50.
-    l_norm = 100.
-    ab_norm = 110.
 
     for steps in range(len(SCALE_STEP)):
         IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
+
+        fake_y_dis = tf.zeros((shape[0], 1))
+        real_y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
 
         for epoch in range(EPOCHS):
             pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
@@ -188,61 +189,25 @@ if __name__ == '__main__':
                     img = tf.image.flip_left_right(img)
 
                 img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
-                gray = rgb2gray(img)
-                # gray = color.rgb2gray(img)
-                # gray = tf.cast(gray, tf.float32)
-                # gray /= 127.5
-                # gray -= 1.
 
-                lab = rgb2lab(img)
-                # img /= 255.
-                # lab = tfio.experimental.color.rgb_to_lab(img)
-                #
-                # l = lab[:, :, :, 0]
-                # l = (l - l_cent) / l_norm
-                #
-                # a = lab[:, :, :, 1]
-                # a = a / ab_norm
-                #
-                # b = lab[:, :, :, 2]
-                # b = b / ab_norm
-                #
-                # l = tf.expand_dims(l, axis=-1)
-                # a = tf.expand_dims(a, axis=-1)
-                # b = tf.expand_dims(b, axis=-1)
-                #
-                # lab = tf.concat([l, a, b], axis=-1)
+                img /= 255.
 
-                # # original
-                # if batch_counter % 2 == 0:
-                #     toggle = not toggle
-                #     if toggle:
-                #         # x_dis = tf.concat((model_gen.predict(l), l), axis=3)
-                #         x_dis = model_gen.predict(l)
-                #         y_dis = tf.zeros((shape[0], 1))
-                #     else:
-                #         # x_dis = tf.concat((l, ab), axis=3)
-                #         x_dis = ab
-                #         y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
-                #
-                #     dis_res = model_dis.train_on_batch(x_dis, y_dis)
+                r_channel = img[:, :, :, 0]
 
-                # test
+                fake_x_dis = model_gen.predict(r_channel)
 
-                fake_x_dis = model_gen.predict(gray)
-                fake_y_dis = tf.zeros((shape[0], 1))
+                real_x_dis = img
+                d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
                 d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
 
-                real_x_dis = lab
-                real_y_dis = tf.random.uniform(shape=[shape[0]], minval=0.9, maxval=1)
-
-                d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
                 dis_res = 0.5 * tf.add(d_fake, d_real)
 
                 model_dis.trainable = False
-                x_gen = gray
+                x_gen = r_channel
+
                 y_gen = tf.ones((shape[0], 1))
-                x_output = lab
+                x_output = img
+
                 gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
                 model_dis.trainable = True
 
@@ -259,31 +224,26 @@ if __name__ == '__main__':
             # validation
             for img in demo_test:
                 img = tf.image.resize_with_pad(img, IMAGE_SHAPE[0], IMAGE_SHAPE[1])
-                gray = rgb2gray(img)
-                # gray = color.rgb2gray(img)
-                # gray = tf.cast(gray, tf.float32)
-                # gray /= 127.5
-                # gray -= 1.
+                img = tf.cast(img, tf.float32)
+                img /= 255.
 
-                pred_ab = model_gen.predict(gray)
+                r_channel = img[:, :, :, 0]
 
-                for i in range(len(pred_ab)):
-                    batch_l = pred_ab[i][:, :, 0]
-                    batch_a = pred_ab[i][:, :, 1]
-                    batch_b = pred_ab[i][:, :, 2]
+                pred_gb = model_gen.predict(r_channel)
 
-                    batch_l = batch_l * l_norm + l_cent
-                    batch_a = batch_a * ab_norm
-                    batch_b = batch_b * ab_norm
-
-                    batch_l = tf.expand_dims(batch_l, -1)
+                for i in range(len(pred_gb)):
+                    batch_g = pred_gb[i][:, :, 0]
+                    batch_b = pred_gb[i][:, :, 1]
+                    
                     batch_a = tf.expand_dims(batch_a, -1)
                     batch_b = tf.expand_dims(batch_b, -1)
 
-                    pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
-                    pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
+                    pred_rgb = tf.concat([r_channel, batch_a, batch_b], axis=-1)
+                    
+                    pred_rgb *= 255.
 
-                    plt.imshow(pred_lab)
+                    pred_rgb = tf.cast(pred_rgb, tf.uint8)
+                    plt.imshow(pred_rgb)
 
                     plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
                     index +=1

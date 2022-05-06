@@ -1,4 +1,3 @@
-from torch import R
 from model.model_builder import build_dis, build_gen
 import tensorflow as tf
 import os
@@ -111,7 +110,7 @@ if __name__ == '__main__':
     LAMBDA1 = 1
     LAMBDA2 = 100
     INPUT_SHAPE_GEN = (512, 512, 1)
-    INPUT_SHAPE_DIS = (512, 512, 2)
+    INPUT_SHAPE_DIS = (512, 512, 3)
     SCALE_STEP = [256]
     GEN_OUTPUT_CHANNEL = 3
     DATASET_DIR ='./datasets'

@@ -37,7 +37,8 @@ def create_model_gan(input_shape, generator, discriminator):
     input = Input(input_shape)
 
     gen_out = generator(input)
-    dis_out = discriminator(concatenate([input, gen_out], axis=3))
+    gen_out = concatenate([input, gen_out], axis=3)
+    dis_out = discriminator(gen_out)
     # dis_out = discriminator(gen_out)
 
     model = tf.keras.Model(inputs=[input], outputs=[dis_out, gen_out], name='dcgan')
@@ -104,14 +105,14 @@ def demo_prepare(path):
 
 if __name__ == '__main__':
     EPOCHS = 30
-    BATCH_SIZE = 32
+    BATCH_SIZE = 8
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
     INPUT_SHAPE_GEN = (512, 512, 1)
     INPUT_SHAPE_DIS = (512, 512, 3)
-    SCALE_STEP = [256]
+    SCALE_STEP = [512]
     GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
     CHECKPOINT_DIR = './checkpoints'
@@ -192,6 +193,8 @@ if __name__ == '__main__':
                 img /= 255.
 
                 r_channel = img[:, :, :, 0]
+
+                r_channel = tf.expand_dims(r_channel, axis=-1)
 
                 pred_gb = model_gen.predict(r_channel)
                 

@@ -238,11 +238,12 @@ if __name__ == '__main__':
                 for i in range(len(pred_gb)):
                     batch_g = pred_gb[i][:, :, 0]
                     batch_b = pred_gb[i][:, :, 1]
-                    
-                    batch_a = tf.expand_dims(batch_a, -1)
+
+                    r_channel = tf.expand_dims(r_channel, -1)
+                    batch_g = tf.expand_dims(batch_g, -1)
                     batch_b = tf.expand_dims(batch_b, -1)
 
-                    pred_rgb = tf.concat([r_channel, batch_a, batch_b], axis=-1)
+                    pred_rgb = tf.concat([r_channel[i], batch_g, batch_b], axis=-1)
                     
                     pred_rgb *= 255.
 

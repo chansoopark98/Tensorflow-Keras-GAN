@@ -4,6 +4,7 @@ from utils.datasets import Dataset
 import argparse
 import tensorflow_io as tfio
 from skimage import color
+import tensorflow_datasets as tfds
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_dir", type=str, help="데이터셋 다운로드 디렉토리 설정", default='./datasets/')
@@ -16,24 +17,32 @@ IMAGE_SIZE = (512, 512)
 # train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
 
 if __name__ == "__main__":
-    train_dataset_config = Dataset(DATASET_DIR, IMAGE_SIZE, batch_size=1, mode='train', dataset='CustomCelebahq')
-    # train_dataset_config = Dataset(DATASET_DIR, IMAGE_SIZE, batch_size=1, mode='train', dataset='CustomCeleba')
-    train_data = train_dataset_config.dataset_test(train_dataset_config.train_data)
+
+    celebA_hq = tfds.load('CustomCelebahq',
+                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+
+    # celebA = tfds.load('CustomCeleba',
+    #                        data_dir=DATASET_DIR, split='train', shuffle_files=True)
+    #
+    # train_data = celebA_hq.concatenate(celebA)
+    train_data = celebA_hq
+
+    # number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
+    # print("학습 데이터 개수", number_train)
+    # steps_per_epoch = number_train // 1
+    # train_data = train_data.shuffle(1024)
+    train_data = train_data.padded_batch(1)
+    train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
 
 
-    for img in train_data.take(100):
+    for batch in train_data.take(100):
 
+        img = batch['image']
         img = img[0]
-        # img = tf.image.resize(img, (512, 512))
-        img = tf.image.resize_with_pad(img, 256, 256)
-        # gray = tfio.experimental.color.rgb_to_grayscale(img)
-        # gray = tf.image.rgb_to_grayscale(img)
-        gray = color.rgb2gray(img)
+        img = tf.image.resize(img, (512, 512))
 
-        gray = tf.cast(gray, tf.float32)
-        gray /= 127.5
-        gray -= 1.
+
         img = tf.cast(img, tf.float32) # if use ycbcr
         img /= 255. #TODO! if use lab
 
@@ -41,23 +50,6 @@ if __name__ == "__main__":
         l_cent = 50.
         l_norm = 100.
         ab_norm = 110.
-        #
-        """    
-        def normalize_l(self, in_l):
-            return (in_l - self.l_cent) / self.l_norm
-    
-    
-        def unnormalize_l(self, in_l):
-            return in_l * self.l_norm + self.l_cent
-    
-    
-        def normalize_ab(self, in_ab):
-            return in_ab / self.ab_norm
-    
-    
-        def unnormalize_ab(self, in_ab):
-            return in_ab * self.ab_norm
-        """
 
         l = lab[:, :, 0]
         l = l.numpy()

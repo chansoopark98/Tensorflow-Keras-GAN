@@ -10,6 +10,7 @@ import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import os
 import tensorflow_io as tfio
+import numpy as np
 
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
@@ -33,8 +34,9 @@ def create_model_gan(input_shape, generator, discriminator):
     input = Input(input_shape)
 
     gen_out = generator(input)
-    # dis_out = discriminator(concatenate([gen_out, input], axis=3))
+    gen_out = concatenate([input, gen_out], axis=3)
     dis_out = discriminator(gen_out)
+    # dis_out = discriminator(gen_out)
 
     model = tf.keras.Model(inputs=[input], outputs=[dis_out, gen_out], name='dcgan')
     return model
@@ -75,13 +77,13 @@ if __name__ == '__main__':
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
-    INPUT_SHAPE_GEN = (256, 256, 1)
-    INPUT_SHAPE_DIS = (256, 256, 3)
+    INPUT_SHAPE_GEN = (512, 512, 1)
+    INPUT_SHAPE_DIS = (512, 512, 3)
     GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
-    WEIGHTS_GEN = './checkpoints/YUV_GAN_Gen.h5'
-    WEIGHTS_DIS = './checkpoints/YUV_GAN_Dis.h5'
-    WEIGHTS_GAN = './checkpoints/YUV_GAN_Gan.h5'
+    WEIGHTS_GEN = './checkpoints/0510/GEN512_19.h5'
+    WEIGHTS_DIS = './checkpoints/0510/DIS512_19.h5'
+    WEIGHTS_GAN = './checkpoints/0510/GAN512_19.h5'
 
     model_gen, model_dis, model_gan = create_models(
         input_shape_gen=INPUT_SHAPE_GEN,
@@ -91,7 +93,7 @@ if __name__ == '__main__':
         momentum=MOMENTUM,
         loss_weights=[LAMBDA1, LAMBDA2])
 
-    model_gen.load_weights('./checkpoints/YUV_GAN_Gen_83.h5', by_name=True)
+    model_gen.load_weights('./checkpoints/0510/GEN512_19.h5', by_name=True)
     train_data = tfds.load('CustomCeleba',
                            data_dir=DATASET_DIR, split='train[:1%]', shuffle_files=True)
     number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
@@ -135,35 +137,51 @@ if __name__ == '__main__':
         else:
             img = tf.cast(features['image'], tf.uint8)
         shape = img.shape
-        # img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
-        img = tf.image.resize_with_pad(img, 256, 256)
-        img /= 255.
-        img = tf.cast(img, tf.float32)
+        
+        img = tf.image.resize(img, (INPUT_SHAPE_GEN[0], INPUT_SHAPE_GEN[1]), tf.image.ResizeMethod.BILINEAR)
+
+        img = tf.cast(img, tf.float32)  # if use ycbcr
+        img /= 255.  # TODO! if use lab
 
         lab = tfio.experimental.color.rgb_to_lab(img)
+        
+        l_channel = lab[:, :, :, 0]
+        l_channel = (l_channel - l_cent) / l_norm
 
-        l = lab[:, :, :, 0]
-        l = (l - l_cent) / l_norm
+        a = lab[:, :, :, 1]
+        a = a / ab_norm
 
-        pred_lab = model_gen.predict(l)
+        b = lab[:, :, :, 2]
+        b = b / ab_norm
 
-        for i in range(len(pred_lab)):
-            # batch_l = pred_lab[i][:, :, 0]
-            batch_a = pred_lab[i][:, :, 0]
-            batch_b = pred_lab[i][:, :, 1]
+        l_channel = tf.expand_dims(l_channel, axis=-1)
+        a = tf.expand_dims(a, axis=-1)
+        b = tf.expand_dims(b, axis=-1)
 
-            batch_l = l[i] * l_norm + l_cent
+        ab = tf.concat([a, b], axis=-1)
+        norm_lab = tf.concat([l_channel, ab], axis=-1)
+
+        pred_ab = model_gen.predict(l_channel)
+
+        for i in range(len(pred_ab)):
+            batch_l = l_channel[i]
+            batch_l = batch_l * l_norm + l_cent
+
+
+            batch_a = pred_ab[i][:, :, 0]
             batch_a = batch_a * ab_norm
-            batch_b = batch_b * ab_norm
-
-            batch_l = tf.expand_dims(batch_l, -1)
             batch_a = tf.expand_dims(batch_a, -1)
+
+            batch_b = pred_ab[i][:, :, 1]
+            batch_b = batch_b * ab_norm
             batch_b = tf.expand_dims(batch_b, -1)
+
 
             pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
 
             pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
-
+            
+            
             rows = 1
             cols = 2
             fig = plt.figure()

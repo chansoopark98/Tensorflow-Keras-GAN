@@ -3,7 +3,7 @@ import tensorflow as tf
 import os
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error
+from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import tensorflow.keras.backend as K
 from tqdm import tqdm
@@ -14,10 +14,62 @@ from skimage import color
 import time
 # LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4.3.0"
 
-
+l_cent = 50.
+l_norm = 100.
+ab_norm = 110.
+    
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
 
+def ssim_loss(y_true, y_pred):
+    # Convert gt lab to rgb
+    gt_l = y_true[:, :, :, 0]
+    gt_l = gt_l * l_norm + l_cent
+    
+    gt_a = y_true[:, :, :, 1]
+    gt_a = gt_a * ab_norm
+    
+    gt_b = y_true[:, :, :, 2]
+    gt_b = gt_b * ab_norm
+    
+    gt_l = tf.expand_dims(gt_l, axis=-1)
+    gt_a = tf.expand_dims(gt_a, axis=-1)
+    gt_b = tf.expand_dims(gt_b, axis=-1)
+    
+    gt_lab = tf.concat([gt_l, gt_a, gt_b], axis=-1)
+
+    gt_rgb = tfio.experimental.color.lab_to_rgb(gt_lab)
+    
+    # Convert pred lab to rgb
+    pred_l = y_pred[:, :, :, 0]
+    pred_l = pred_l * l_norm + l_cent
+    
+    pred_a = y_pred[:, :, :, 1]
+    pred_a = pred_a * ab_norm
+    
+    pred_b = y_pred[:, :, :, 2]
+    pred_b = pred_b * ab_norm
+    
+    pred_l = tf.expand_dims(pred_l, axis=-1)
+    pred_a = tf.expand_dims(pred_a, axis=-1)
+    pred_b = tf.expand_dims(pred_b, axis=-1)
+    
+    pred_lab = tf.concat([pred_l, pred_a, pred_b], axis=-1)
+
+    pred_rgb = tfio.experimental.color.lab_to_rgb(pred_lab)
+    
+    
+    gt_rgb = tf.cast(gt_rgb, tf.float32)
+    pred_rgb = tf.cast(pred_rgb, tf.float32)
+    
+    ssim = tf.image.ssim(pred_rgb, gt_rgb, max_val=1.0, filter_size=11,
+                          filter_sigma=1.5, k1=0.01, k2=0.03)
+    
+    ssim_loss = (1- ssim) * 0.84
+    
+    mae_loss = MeanAbsoluteError()(y_true, y_pred)
+    return ssim_loss + mae_loss
+    
 def l1(y_true, y_pred):
     return K.mean(K.abs(y_pred - y_true))
 
@@ -57,7 +109,7 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(
-        loss=[binary_crossentropy, l1],
+        loss=[binary_crossentropy, ssim_loss],
         metrics=[eacc, 'accuracy'],
         loss_weights=loss_weights,
         optimizer=optimizer
@@ -163,6 +215,7 @@ if __name__ == '__main__':
     demo_steps = len(filenames) // 1
 
 
+
     for steps in range(len(SCALE_STEP)):
         IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
 
@@ -190,16 +243,33 @@ if __name__ == '__main__':
 
                 img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
 
-                img /= 255.
+                img = tf.cast(img, tf.float32)  # if use ycbcr
+                img /= 255.  # TODO! if use lab
 
-                r_channel = img[:, :, :, 0]
+                lab = tfio.experimental.color.rgb_to_lab(img)
 
-                r_channel = tf.expand_dims(r_channel, axis=-1)
+                l_channel = lab[:, :, :, 0]
+                l_channel = (l_channel - l_cent) / l_norm
 
-                pred_gb = model_gen.predict(r_channel)
+                a = lab[:, :, :, 1]
+                a = a / ab_norm
+
+                b = lab[:, :, :, 2]
+                b = b / ab_norm
+
+                l_channel = tf.expand_dims(l_channel, axis=-1)
+                a = tf.expand_dims(a, axis=-1)
+                b = tf.expand_dims(b, axis=-1)
+
+                ab = tf.concat([a, b], axis=-1)
+                norm_lab = tf.concat([l_channel, ab], axis=-1)
+                # ! ---- ##
+
+
+                pred_ab = model_gen.predict(l_channel)
                 
-                fake_x_dis = tf.concat([r_channel, pred_gb], axis=-1)
-                real_x_dis = img
+                fake_x_dis = tf.concat([l_channel, pred_ab], axis=-1)
+                real_x_dis = norm_lab
                 
                 d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
                 d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
@@ -207,16 +277,19 @@ if __name__ == '__main__':
                 dis_res = 0.5 * tf.add(d_fake, d_real)
 
                 model_dis.trainable = False
-                x_gen = r_channel
+                x_gen = l_channel
 
                 y_gen = tf.ones((BATCH_SIZE, 1))
-                x_output = img
+
+
+                x_output = norm_lab
 
                 gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
                 model_dis.trainable = True
 
                 pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
                                         gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
+
 
             # if epoch % 5 == 0:
             model_gen.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
@@ -227,28 +300,51 @@ if __name__ == '__main__':
 
             # validation
             for img in demo_test:
-                img = tf.image.resize_with_pad(img, IMAGE_SHAPE[0], IMAGE_SHAPE[1])
-                img = tf.cast(img, tf.float32)
-                img /= 255.
+                img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
 
-                r_channel = img[:, :, :, 0]
+                img = tf.cast(img, tf.float32)  # if use ycbcr
+                img /= 255.  # TODO! if use lab
 
-                pred_gb = model_gen.predict(r_channel)
+                lab = tfio.experimental.color.rgb_to_lab(img)
 
-                for i in range(len(pred_gb)):
-                    batch_g = pred_gb[i][:, :, 0]
-                    batch_b = pred_gb[i][:, :, 1]
+                l_channel = lab[:, :, :, 0]
+                l_channel = (l_channel - l_cent) / l_norm
 
-                    r_channel = tf.expand_dims(r_channel, -1)
-                    batch_g = tf.expand_dims(batch_g, -1)
+                a = lab[:, :, :, 1]
+                a = a / ab_norm
+
+                b = lab[:, :, :, 2]
+                b = b / ab_norm
+
+                l_channel = tf.expand_dims(l_channel, axis=-1)
+                a = tf.expand_dims(a, axis=-1)
+                b = tf.expand_dims(b, axis=-1)
+
+                ab = tf.concat([a, b], axis=-1)
+                norm_lab = tf.concat([l_channel, ab], axis=-1)
+
+                pred_ab = model_gen.predict(l_channel)
+
+                for i in range(len(pred_ab)):
+                    batch_l = l_channel[i]
+                    batch_l = batch_l * l_norm + l_cent
+
+
+                    batch_a = pred_ab[i][:, :, 0]
+                    batch_a = batch_a * ab_norm
+                    batch_a = tf.expand_dims(batch_a, -1)
+
+                    batch_b = pred_ab[i][:, :, 1]
+                    batch_b = batch_b * ab_norm
                     batch_b = tf.expand_dims(batch_b, -1)
 
-                    pred_rgb = tf.concat([r_channel[i], batch_g, batch_b], axis=-1)
-                    
-                    pred_rgb *= 255.
 
-                    pred_rgb = tf.cast(pred_rgb, tf.uint8)
-                    plt.imshow(pred_rgb)
+                    pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
+
+                    pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
+
+
+                    plt.imshow(pred_lab)
 
                     plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
                     index +=1

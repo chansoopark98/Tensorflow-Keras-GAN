@@ -3,7 +3,7 @@ import tensorflow as tf
 import os
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError
+from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError, MeanSquaredError
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import tensorflow.keras.backend as K
 from tqdm import tqdm
@@ -16,9 +16,21 @@ import time
 l_cent = 50.
 l_norm = 100.
 ab_norm = 110.
-    
+
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
+
+def ssim_loss(y_true, y_pred):
+    mse_loss = MeanSquaredError()(y_true, y_pred)  
+
+    y_true += 1.
+    y_pred += 1.
+    
+    ssim_loss = (1 - tf.image.ssim_multiscale(y_pred, y_true, 2.0))
+    ssim_loss = tf.reduce_mean(ssim_loss) * 0.84
+    
+    
+    return mse_loss + ssim_loss
 
 def mae_loss(y_true, y_pred):
     return MeanAbsoluteError()(y_true, y_pred)
@@ -54,15 +66,15 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
     optimizer = Adam(learning_rate=lr, beta_1=momentum)
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
-    model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
-    model_gen.compile(loss=mean_absolute_error, optimizer=optimizer)
-
     model_dis = create_model_dis(input_shape=input_shape_dis)
     model_dis.trainable = False
 
+    model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
+    model_gen.compile(loss=ssim_loss, optimizer=optimizer)
+
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(
-        loss=[binary_crossentropy, mean_absolute_error],
+        loss=[binary_crossentropy, ssim_loss],
         metrics=[eacc, 'accuracy'],
         loss_weights=loss_weights,
         optimizer=optimizer
@@ -75,34 +87,6 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     return model_gen, model_dis, model_gan
 
-def rgb2gray(img):
-    gray = color.rgb2gray(img)
-    gray = tf.cast(gray, tf.float32)
-    gray /= 127.5
-    gray -= 1.
-    return gray
-
-def rgb2lab(img):
-    img /= 255.
-    lab = tfio.experimental.color.rgb_to_lab(img)
-
-    l = lab[:, :, :, 0]
-    l = (l - 50.) / 100.
-
-    a = lab[:, :, :, 1]
-    a = a / 110.
-
-    b = lab[:, :, :, 2]
-    b = b / 110.
-
-    l = tf.expand_dims(l, axis=-1)
-    a = tf.expand_dims(a, axis=-1)
-    b = tf.expand_dims(b, axis=-1)
-
-    lab = tf.concat([l, a, b], axis=-1)
-
-    return lab
-
 def demo_prepare(path):
     img = tf.io.read_file(path)
     img = tf.image.decode_image(img, channels=3)
@@ -110,7 +94,7 @@ def demo_prepare(path):
 
 if __name__ == '__main__':
     EPOCHS = 30
-    BATCH_SIZE = 8
+    BATCH_SIZE = 1
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
@@ -144,7 +128,7 @@ if __name__ == '__main__':
     # model_gan.load_weights(WEIGHTS_GAN + '.h5')
 
     celebA_hq = tfds.load('CustomCelebahq',
-                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+                           data_dir=DATASET_DIR, split='train[:1%]', shuffle_files=True)
 
     # celebA = tfds.load('CustomCeleba',
     #                        data_dir=DATASET_DIR, split='train', shuffle_files=True)
@@ -196,33 +180,20 @@ if __name__ == '__main__':
 
                 img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
 
-                img = tf.cast(img, tf.float32)  # if use ycbcr
-                img /= 255.  # TODO! if use lab
+                img = tf.cast(img, tf.float32) 
+                NORM_RGB = (img / 127.5) - 1
+                
+                R = NORM_RGB[:, :, :, :1]
+                GB = NORM_RGB[:, :, :, 1:]
 
-                lab = tfio.experimental.color.rgb_to_lab(img)
 
-                l_channel = lab[:, :, :, 0]
-                l_channel = (l_channel - l_cent) / l_norm
-
-                a = lab[:, :, :, 1]
-                a = a / ab_norm
-
-                b = lab[:, :, :, 2]
-                b = b / ab_norm
-
-                l_channel = tf.expand_dims(l_channel, axis=-1)
-                a = tf.expand_dims(a, axis=-1)
-                b = tf.expand_dims(b, axis=-1)
-
-                ab = tf.concat([a, b], axis=-1)
-                norm_lab = tf.concat([l_channel, ab], axis=-1)
                 # ! ---- ##
 
 
-                pred_ab = model_gen.predict(l_channel)
+                pred_gb = model_gen.predict(R)
                 
-                fake_x_dis = tf.concat([l_channel, pred_ab], axis=-1)
-                real_x_dis = norm_lab
+                fake_x_dis = tf.concat([R, pred_gb], axis=-1)
+                real_x_dis = NORM_RGB
                 
                 d_real = model_dis.train_on_batch(real_x_dis, real_y_dis)
                 d_fake = model_dis.train_on_batch(fake_x_dis, fake_y_dis)
@@ -230,12 +201,12 @@ if __name__ == '__main__':
                 dis_res = 0.5 * tf.add(d_fake, d_real)
 
                 model_dis.trainable = False
-                x_gen = l_channel
+                x_gen = R
 
                 y_gen = tf.ones((BATCH_SIZE, 1))
 
 
-                x_output = norm_lab
+                x_output = NORM_RGB
 
                 gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
                 model_dis.trainable = True
@@ -255,49 +226,28 @@ if __name__ == '__main__':
             for img in demo_test:
                 img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
 
-                img = tf.cast(img, tf.float32)  # if use ycbcr
-                img /= 255.  # TODO! if use lab
-
-                lab = tfio.experimental.color.rgb_to_lab(img)
-
-                l_channel = lab[:, :, :, 0]
-                l_channel = (l_channel - l_cent) / l_norm
-
-                a = lab[:, :, :, 1]
-                a = a / ab_norm
-
-                b = lab[:, :, :, 2]
-                b = b / ab_norm
-
-                l_channel = tf.expand_dims(l_channel, axis=-1)
-                a = tf.expand_dims(a, axis=-1)
-                b = tf.expand_dims(b, axis=-1)
-
-                ab = tf.concat([a, b], axis=-1)
-                norm_lab = tf.concat([l_channel, ab], axis=-1)
-
-                pred_ab = model_gen.predict(l_channel)
-
-                for i in range(len(pred_ab)):
-                    batch_l = l_channel[i]
-                    batch_l = batch_l * l_norm + l_cent
+                img = tf.cast(img, tf.float32) 
+                NORM_RGB = (img / 127.5) - 1
+                
+                R = NORM_RGB[:, :, :, :1]
+                GB = NORM_RGB[:, :, :, 1:]
 
 
-                    batch_a = pred_ab[i][:, :, 0]
-                    batch_a = batch_a * ab_norm
-                    batch_a = tf.expand_dims(batch_a, -1)
 
-                    batch_b = pred_ab[i][:, :, 1]
-                    batch_b = batch_b * ab_norm
-                    batch_b = tf.expand_dims(batch_b, -1)
+                pred_gb = model_gen.predict(R)
 
+                for i in range(len(pred_gb)):
+                    batch_R = R[i]
+                    batch_R = (batch_R + 1) * 127.5
 
-                    pred_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
+                    batch_pred = pred_gb[i]
+                    batch_pred = (batch_pred + 1) * 127.5
 
-                    pred_lab = tfio.experimental.color.lab_to_rgb(pred_lab)
+                    PRED_RGB = tf.concat([batch_R, batch_pred], axis=-1)
 
+                    PRED_RGB = tf.cast(PRED_RGB, tf.uint8)
 
-                    plt.imshow(pred_lab)
+                    plt.imshow(PRED_RGB)
 
                     plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
                     index +=1

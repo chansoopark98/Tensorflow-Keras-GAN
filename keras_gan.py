@@ -21,54 +21,8 @@ ab_norm = 110.
 def eacc(y_true, y_pred):
     return K.mean(K.equal(K.round(y_true), K.round(y_pred)))
 
-def ssim_loss(y_true, y_pred):
-    # Convert gt lab to rgb
-    gt_l = y_true[:, :, :, 0]
-    gt_l = gt_l * l_norm + l_cent
-    
-    gt_a = y_true[:, :, :, 1]
-    gt_a = gt_a * ab_norm
-    
-    gt_b = y_true[:, :, :, 2]
-    gt_b = gt_b * ab_norm
-    
-    gt_l = tf.expand_dims(gt_l, axis=-1)
-    gt_a = tf.expand_dims(gt_a, axis=-1)
-    gt_b = tf.expand_dims(gt_b, axis=-1)
-    
-    gt_lab = tf.concat([gt_l, gt_a, gt_b], axis=-1)
-
-    gt_rgb = tfio.experimental.color.lab_to_rgb(gt_lab)
-    
-    # Convert pred lab to rgb
-    pred_l = y_pred[:, :, :, 0]
-    pred_l = pred_l * l_norm + l_cent
-    
-    pred_a = y_pred[:, :, :, 1]
-    pred_a = pred_a * ab_norm
-    
-    pred_b = y_pred[:, :, :, 2]
-    pred_b = pred_b * ab_norm
-    
-    pred_l = tf.expand_dims(pred_l, axis=-1)
-    pred_a = tf.expand_dims(pred_a, axis=-1)
-    pred_b = tf.expand_dims(pred_b, axis=-1)
-    
-    pred_lab = tf.concat([pred_l, pred_a, pred_b], axis=-1)
-
-    pred_rgb = tfio.experimental.color.lab_to_rgb(pred_lab)
-    
-    
-    gt_rgb = tf.cast(gt_rgb, tf.float32)
-    pred_rgb = tf.cast(pred_rgb, tf.float32)
-    
-    ssim = tf.image.ssim(pred_rgb, gt_rgb, max_val=1.0, filter_size=11,
-                          filter_sigma=1.5, k1=0.01, k2=0.03)
-    
-    ssim_loss = (1- ssim) * 0.84
-    
-    mae_loss = MeanAbsoluteError()(y_true, y_pred)
-    return ssim_loss + mae_loss
+def mae_loss(y_true, y_pred):
+    return MeanAbsoluteError()(y_true, y_pred)
     
 def l1(y_true, y_pred):
     return K.mean(K.abs(y_pred - y_true))
@@ -109,7 +63,7 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(
-        loss=[binary_crossentropy, ssim_loss],
+        loss=[binary_crossentropy, mean_absolute_error],
         metrics=[eacc, 'accuracy'],
         loss_weights=loss_weights,
         optimizer=optimizer

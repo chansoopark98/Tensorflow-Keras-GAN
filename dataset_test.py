@@ -57,7 +57,8 @@ if __name__ == "__main__":
         
         R = NORM_RGB[:, :, :1]
         GB = NORM_RGB[:, :, 1:]
-
+        
+        
 
         rows = 1
         cols = 3

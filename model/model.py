@@ -284,3 +284,55 @@ def build_discriminator(image_size=(512, 512, 3), name='discriminator'):
     output = Activation('sigmoid')(output)
 
     return inputs, output
+
+
+def build_patchDiscriminator(image_size=(512, 512, 3), name='discriminator'):
+    inputs = Input(shape=image_size, name='image_input')
+    init = 'he_normal'
+    momentum = 0.8
+
+    conv11 = Conv2D(64,
+                    kernel_size=(3, 3),
+                    strides=(2, 2),
+                    use_bias=True,
+                    kernel_initializer=init,
+                    padding='same')(inputs)
+    conv11 = Activation(LeakyReLU(0.2))(conv11)
+
+    conv21 = Conv2D(128,
+                    kernel_size=(3, 3),
+                    strides=(2, 2),
+                    use_bias=False,
+                    kernel_initializer=init,
+                    padding='same')(conv11)
+    conv21 = Activation(LeakyReLU(0.2))(conv21)
+    conv21 = BatchNormalization(momentum=momentum)(conv21)
+
+    conv31 = Conv2D(256,
+                    kernel_size=(3, 3),
+                    strides=(2, 2),
+                    use_bias=False,
+                    kernel_initializer=init,
+                    padding='same')(conv21)
+    conv31 = Activation(LeakyReLU(0.2))(conv31)
+    conv31 = BatchNormalization(momentum=momentum)(conv31)
+    # conv31 = Dropout(0.4)(conv31)
+
+    conv41 = Conv2D(512,
+                    kernel_size=(3, 3),
+                    strides=(2, 2),
+                    use_bias=False,
+                    kernel_initializer=init,
+                    padding='same')(conv31)
+    conv41 = Activation(LeakyReLU(0.2))(conv41)
+    conv41 = BatchNormalization(momentum=momentum)(conv41)
+    # conv41 = Dropout(0.4)(conv41)
+
+    output = Conv2D(1,
+                    kernel_size=(4, 4),
+                    strides=(1, 1),
+                    use_bias=True,
+                    kernel_initializer=init,
+                    padding='same')(conv41)
+
+    return inputs, output

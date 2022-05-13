@@ -1,5 +1,5 @@
 import tensorflow as tf
-from model.model import colorization_model, build_discriminator, build_generator
+from model.model import colorization_model, build_discriminator, build_generator, build_patchDiscriminator
 
 def base_model(image_size, num_classes):
 
@@ -15,6 +15,6 @@ def build_gen(image_size, output_channels=3):
     return model_input, model_output
 
 def build_dis(image_size):
-    model_input, model_output = build_discriminator(image_size=image_size)
+    model_input, model_output = build_patchDiscriminator(image_size=image_size)
 
     return model_input, model_output

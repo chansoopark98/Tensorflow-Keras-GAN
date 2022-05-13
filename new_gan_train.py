@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import tensorflow_io as tfio
 from skimage import color
 import time
+import numpy as np
 # LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal 
 l_cent = 50.
 l_norm = 100.
@@ -67,6 +68,12 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
     model_dis = create_model_dis(input_shape=input_shape_dis)
+    model_dis.compile(
+        loss='mse',
+        optimizer=optimizer,
+        metrics=['accuracy']
+    )
+
     model_dis.trainable = False
 
     model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
@@ -74,16 +81,13 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(
-        loss=[binary_crossentropy, ssim_loss],
-        metrics=[eacc, 'accuracy'],
+        loss=['mse', 'mae'],
+        metrics=['accuracy', 'mse'],
         loss_weights=loss_weights,
         optimizer=optimizer
     )
 
     model_gan.summary()
-
-    model_dis.trainable = True
-    model_dis.compile(loss=binary_crossentropy, optimizer=optimizer)
 
     return model_gen, model_dis, model_gan
 
@@ -94,13 +98,17 @@ def demo_prepare(path):
 
 if __name__ == '__main__':
     EPOCHS = 30
-    BATCH_SIZE = 8
+    BATCH_SIZE = 1
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
     LAMBDA2 = 100
     INPUT_SHAPE_GEN = (512, 512, 1)
     INPUT_SHAPE_DIS = (512, 512, 3)
+
+    patch = int(INPUT_SHAPE_GEN[0] / 2**4)
+    disc_patch = (patch, patch, 1)
+
     SCALE_STEP = [512]
     GEN_OUTPUT_CHANNEL = 2
     DATASET_DIR ='./datasets'
@@ -156,8 +164,9 @@ if __name__ == '__main__':
     for steps in range(len(SCALE_STEP)):
         IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
 
-        fake_y_dis = tf.zeros((BATCH_SIZE, 1))
-        real_y_dis = tf.random.uniform(shape=[BATCH_SIZE], minval=0.9, maxval=1)
+        fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
+        real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
+        # real_y_dis = tf.random.uniform(shape=[(BATCH_SIZE,) + disc_patch], minval=0.9, maxval=1)
 
         for epoch in range(EPOCHS):
             pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
@@ -187,9 +196,6 @@ if __name__ == '__main__':
                 GB = NORM_RGB[:, :, :, 1:]
 
 
-                # ! ---- ##
-
-
                 pred_gb = model_gen.predict(R)
                 
                 fake_x_dis = tf.concat([R, pred_gb], axis=-1)
@@ -200,18 +206,12 @@ if __name__ == '__main__':
 
                 dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                model_dis.trainable = False
-                x_gen = R
-
-                y_gen = tf.ones((BATCH_SIZE, 1))
-
-
                 x_output = NORM_RGB
 
-                gan_res = model_gan.train_on_batch(x_gen, [y_gen, x_output])
+                gan_res = model_gan.train_on_batch(R, [real_y_dis, real_x_dis])
                 model_dis.trainable = True
-
-                pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f P_ACC: %f ACC: %f" % (epoch, dis_res,
+                
+                pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f ACC: %f MSE: %f" % (epoch, dis_res[0],
                                         gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
 
 

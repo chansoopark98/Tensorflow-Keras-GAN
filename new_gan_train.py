@@ -77,7 +77,6 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
     model_dis.trainable = False
 
     model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
-    model_gen.compile(loss=ssim_loss, optimizer=optimizer)
 
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(
@@ -98,7 +97,7 @@ def demo_prepare(path):
 
 if __name__ == '__main__':
     EPOCHS = 30
-    BATCH_SIZE = 8
+    BATCH_SIZE = 1
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1

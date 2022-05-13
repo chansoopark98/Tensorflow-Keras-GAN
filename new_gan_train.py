@@ -98,7 +98,7 @@ def demo_prepare(path):
 
 if __name__ == '__main__':
     EPOCHS = 30
-    BATCH_SIZE = 1
+    BATCH_SIZE = 8
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1

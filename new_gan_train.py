@@ -94,7 +94,7 @@ def demo_prepare(path):
 
 if __name__ == '__main__':
     EPOCHS = 30
-    BATCH_SIZE = 1
+    BATCH_SIZE = 8
     LEARNING_RATE = 0.0002
     MOMENTUM = 0.5
     LAMBDA1 = 1
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     # model_gan.load_weights(WEIGHTS_GAN + '.h5')
 
     celebA_hq = tfds.load('CustomCelebahq',
-                           data_dir=DATASET_DIR, split='train[:1%]', shuffle_files=True)
+                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
     # celebA = tfds.load('CustomCeleba',
     #                        data_dir=DATASET_DIR, split='train', shuffle_files=True)

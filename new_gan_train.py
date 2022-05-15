@@ -22,8 +22,8 @@ import numpy as np
 class Pix2Pix():
     def __init__(self):
         # Input shape
-        self.img_rows = 256
-        self.img_cols = 256
+        self.img_rows = 512
+        self.img_cols = 512
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
@@ -111,7 +111,7 @@ class Pix2Pix():
         u6 = deconv2d(u5, d1, self.gf)
 
         u7 = UpSampling2D(size=2)(u6)
-        output_img = Conv2D(self.channels, kernel_size=4, strides=1, padding='same', activation='tanh')(u7)
+        output_img = Conv2D(2, kernel_size=4, strides=1, padding='same', activation='tanh')(u7)
 
         return tf.keras.Model(d0, output_img)
 
@@ -125,8 +125,8 @@ class Pix2Pix():
                 d = BatchNormalization(momentum=0.8)(d)
             return d
 
-        img_A = Input(shape=self.img_shape) # (512, 512, 1) R channel
-        img_B = Input(shape=self.img_shape) # (512, 512, 2) GB channel
+        img_A = Input(shape=(512, 512, 1)) # (512, 512, 1) R channel
+        img_B = Input(shape=(512, 512, 2)) # (512, 512, 2) GB channel
 
         # Concatenate image and conditioning image by channels to produce input
         combined_imgs = Concatenate(axis=-1)([img_A, img_B])
@@ -147,7 +147,7 @@ class Pix2Pix():
     
     def train(self):
         EPOCHS = 30
-        BATCH_SIZE = 1
+        BATCH_SIZE = 8
         INPUT_SHAPE_GEN = (512, 512, 1)
         
 
@@ -238,10 +238,9 @@ class Pix2Pix():
                     gan_res = self.combined.train_on_batch([R, GB], [real_y_dis, GB])
                     
                     
-                    pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f ACC: %f MSE: %f" % (epoch, dis_res[0],
-                                            gan_res[0], gan_res[1], gan_res[2], gan_res[5], gan_res[6]))
-
-
+                    pbar.set_description("Epoch : %d Dis loss: %f Dis ACC: %f Gan loss: %f" % (epoch, dis_res[0],
+                                            100 * dis_res[1], gan_res[0]))
+                    
                 # if epoch % 5 == 0:
                 self.generator.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
                 self.discriminator.save_weights(WEIGHTS_DIS + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
@@ -280,4 +279,5 @@ class Pix2Pix():
                         index +=1
 
 if __name__ == '__main__':
-    
+    gan = Pix2Pix()
+    gan.train()

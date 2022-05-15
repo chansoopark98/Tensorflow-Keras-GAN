@@ -67,16 +67,31 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
     optimizer = Adam(learning_rate=lr, beta_1=momentum)
     optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
 
-    model_dis = create_model_dis(input_shape=input_shape_dis)
+    model_dis = create_model_dis(input_shape=None)
     model_dis.compile(
-        loss=binary_crossentropy,
+        loss='mse',
         optimizer=optimizer,
         metrics=['accuracy']
     )
+    
+    model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
+
+    img_A = Input(shape=img_shape) # 512 512 2?
+    img_B = Input(shape=img_shape) # 512 512 1
+    
+    fake_A = model_gen(img_B)
 
     model_dis.trainable = False
-
-    model_gen = create_model_gen(input_shape=input_shape_gen, output_channels=output_channels)
+    
+    valid = model_dis([fake_A, img_B])
+    
+    self.combined = Model(inputs=[img_A, img_B], outputs=[valid, fake_A])
+    self.combined.compile(loss=['mse', 'mae'],
+                              loss_weights=[1, 100],
+                              optimizer=optimizer)
+    
+    
+    
 
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(

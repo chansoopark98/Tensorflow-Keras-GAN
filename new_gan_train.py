@@ -69,7 +69,7 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     model_dis = create_model_dis(input_shape=input_shape_dis)
     model_dis.compile(
-        loss='mse',
+        loss=binary_crossentropy,
         optimizer=optimizer,
         metrics=['accuracy']
     )
@@ -81,7 +81,7 @@ def create_models(input_shape_gen, input_shape_dis, output_channels, lr, momentu
 
     model_gan = create_model_gan(input_shape=input_shape_gen, generator=model_gen, discriminator=model_dis)
     model_gan.compile(
-        loss=['mse', 'mae'],
+        loss=[binary_crossentropy, 'mae'],
         metrics=['accuracy', 'mse'],
         loss_weights=loss_weights,
         optimizer=optimizer
@@ -208,7 +208,7 @@ if __name__ == '__main__':
 
                 x_output = NORM_RGB
 
-                gan_res = model_gan.train_on_batch(R, [real_y_dis, real_x_dis])
+                gan_res = model_gan.train_on_batch(R, [real_y_dis, x_output])
                 model_dis.trainable = True
                 
                 pbar.set_description("Epoch : %d Dis loss: %f Gan total: %f Gan loss: %f Gan L1: %f ACC: %f MSE: %f" % (epoch, dis_res[0],

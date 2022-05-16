@@ -168,7 +168,7 @@ class Pix2Pix():
     
     def train(self):
         EPOCHS = 30
-        BATCH_SIZE = 2
+        BATCH_SIZE = 8
         INPUT_SHAPE_GEN = (512, 512, 1)
         
     
@@ -267,9 +267,9 @@ class Pix2Pix():
                                               gan_res[1]))
                     
                 # if epoch % 5 == 0:
-                self.generator.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
-                self.discriminator.save_weights(WEIGHTS_DIS + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
-                self.combined.save_weights(WEIGHTS_GAN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+                self.gen_model.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+                self.d_model.save_weights(WEIGHTS_DIS + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+                self.gan_model.save_weights(WEIGHTS_GAN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
 
                 os.makedirs(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch), exist_ok=True)
 

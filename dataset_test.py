@@ -1,3 +1,4 @@
+from re import T
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from utils.datasets import Dataset
@@ -24,7 +25,7 @@ def demo_prepare(path):
 
 if __name__ == "__main__":
     batch_size = 1
-    demo = False
+    demo = True
     celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
@@ -64,34 +65,14 @@ if __name__ == "__main__":
         
         img = tf.cast(img, tf.float32) # if use ycbcr
         for i in range(batch_size):
-            
-            l_channel = lab[i, :, :, 0]
-            
-            a_channel = lab[i, :, :, 1]
-            
-            b_channel = lab[i, :, :, 2]
-
-
-            l_channel /= 100.
-
-            a_channel /= 127.
-
-            b_channel /= 127.
-
-            print('a_channel max', np.max(a_channel))
-            print('a_channel min', np.min(a_channel))
-            print('b_channel max', np.max(b_channel))
-            print('b_channel min', np.min(b_channel))
-            
-
-            # l_channel = l_channel / np.max(l_channel)
-            # l_channel = (l_channel-0.5)/0.5
 
 
             NORM_RGB = (img[i] / 127.5) - 1
             
-            R = NORM_RGB[:, :, :1]
-            GB = NORM_RGB[:, :, 1:]
+            R = NORM_RGB[:, :, 0]
+            G = NORM_RGB[:, :, 1]
+            B = NORM_RGB[:, :, 2]
+            
             
 
             rows = 1
@@ -100,27 +81,27 @@ if __name__ == "__main__":
 
             ax0 = fig.add_subplot(rows, cols, 1)
             ax0.imshow(rgb[0])
-            ax0.set_title('r')
+            ax0.set_title('RGB image')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 2)
-            ax0.imshow(l_channel)
-            ax0.set_title('l_channel')
+            ax0.imshow(R)
+            ax0.set_title('R channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 3)
-            ax0.imshow(a_channel)
-            ax0.set_title('a_channel')
+            ax0.imshow(G)
+            ax0.set_title('G channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 4)
-            ax0.imshow(b_channel)
-            ax0.set_title('b_channel')
+            ax0.imshow(B)
+            ax0.set_title('B channel')
             ax0.axis("off")
 
-
+            plt.savefig('Holo_rgb.png', dpi=500)
             plt.show()
-
+            
 
         # yuv = tfio.experimental.color.rgb_to_yuv(lab)
         

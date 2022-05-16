@@ -35,20 +35,18 @@ if __name__ == "__main__":
     train_data = train_data.padded_batch(1)
     train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
-    
+    batch_size = 2 
     # prepare validation dataset
     filenames = os.listdir('./demo_images')
     filenames.sort()
     train_data = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
     train_data = train_data.map(demo_prepare)
-    train_data = train_data.batch(1)
+    train_data = train_data.batch(batch_size)
 
 
-    for batch in train_data.take(5):
+    for batch in train_data.take(2):
 
-        # img = batch['image']
-        img = batch[0]
-        img = tf.image.resize(img, (512, 512))
+        img = tf.image.resize(batch, (512, 512))
         
         original = img
 
@@ -56,39 +54,41 @@ if __name__ == "__main__":
         gray = color.rgb2gray(img)
         
         img = tf.cast(img, tf.float32) # if use ycbcr
-        NORM_RGB = (img / 127.5) - 1
-        
-        R = NORM_RGB[:, :, :1]
-        GB = NORM_RGB[:, :, 1:]
-        
-        
+        for i in range(batch_size):
+       
+            NORM_RGB = (img[i] / 127.5) - 1
+            
+            R = NORM_RGB[:, :, :1]
+            GB = NORM_RGB[:, :, 1:]
+            
+            
 
-        rows = 1
-        cols = 4
-        fig = plt.figure()
+            rows = 1
+            cols = 4
+            fig = plt.figure()
 
-        ax0 = fig.add_subplot(rows, cols, 1)
-        ax0.imshow(R[:, :, 0])
-        ax0.set_title('r')
-        ax0.axis("off")
+            ax0 = fig.add_subplot(rows, cols, 1)
+            ax0.imshow(R[:, :, 0])
+            ax0.set_title('r')
+            ax0.axis("off")
 
-        ax0 = fig.add_subplot(rows, cols, 2)
-        ax0.imshow(GB[:, :, 0])
-        ax0.set_title('g')
-        ax0.axis("off")
+            ax0 = fig.add_subplot(rows, cols, 2)
+            ax0.imshow(GB[:, :, 0])
+            ax0.set_title('g')
+            ax0.axis("off")
 
-        ax0 = fig.add_subplot(rows, cols, 3)
-        ax0.imshow(GB[:, :, 1])
-        ax0.set_title('b')
-        ax0.axis("off")
+            ax0 = fig.add_subplot(rows, cols, 3)
+            ax0.imshow(GB[:, :, 1])
+            ax0.set_title('b')
+            ax0.axis("off")
 
-        ax0 = fig.add_subplot(rows, cols, 4)
-        ax0.imshow(gray)
-        ax0.set_title('b')
-        ax0.axis("off")
+            ax0 = fig.add_subplot(rows, cols, 4)
+            ax0.imshow(gray[i])
+            ax0.set_title('b')
+            ax0.axis("off")
 
 
-        plt.show()
+            plt.show()
 
 
         # yuv = tfio.experimental.color.rgb_to_yuv(lab)

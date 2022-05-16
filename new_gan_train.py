@@ -4,6 +4,9 @@ from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.layers import (
     UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout, concatenate,
     DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose, GlobalAveragePooling2D)
+
+from tensorflow.keras.initializers import RandomNormal
+from tensorflow.keras.models import Model
 from tensorflow.keras.activations import tanh, relu
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError, MeanSquaredError
@@ -35,122 +38,128 @@ class Pix2Pix():
         self.gf = 64
         self.df = 64
 
-        optimizer = Adam(0.0002, 0.5)
+        opt = Adam(lr=0.0002, beta_1=0.5)
 
-        # Build and compile the discriminator
-        self.discriminator = self.build_discriminator()
-        self.discriminator.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-            optimizer=optimizer,
-            metrics=['accuracy'])
+        self.d_model = self.build_discriminator()
+        self.gen_model = self.build_generator()
+    
 
-        #-------------------------
-        # Construct Computational
-        #   Graph of Generator
-        #-------------------------
+        self.d_model.trainable = False
+        input_src_image = Input(shape=(512, 512, 1)) # Input = GRAY SCALE IMAGE
+        gen_out = self.gen_model(input_src_image) # return RGB
 
-        # Build the generator
-        self.generator = self.build_generator()
+        # connect the source input and generator output to the discriminator input
+        dis_out = self.d_model([input_src_image, gen_out]) # GRAY, RGB
 
-        # Input images and their conditioning images
-        img_R = Input(shape=(512, 512, 1)) # (512, 512, 2)
-        img_GRAY = Input(shape=(512, 512, 1)) # (512, 512, 1)
+        # src image as input, generated image and real/fake classification as output
+        self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
         
+        self.gan_model.compile(loss=['binary_crossentropy', 'mae'], optimizer=opt, loss_weights=[1, 100])
 
-        # By conditioning on B generate a fake version of A
-        generate_GB = self.generator(img_R) # Input : 512, 512, 1 Output : 512, 512, 2
+    def build_generator(self):
+        gen_input_shape=(512, 512, 1)
 
-        generate_RGB = tf.concat([img_R, generate_GB], axis=-1)
+        kernel_weights_init = RandomNormal(stddev=0.02)
+        input_src_image = Input(shape=gen_input_shape)
 
-        # For the combined model we will only train the generator
-        self.discriminator.trainable = False
+        # encoder model
+        e1 = self._encoder_block(input_src_image, 64, batchnorm=False)
+        e2 = self._encoder_block(e1, 128)
+        e3 = self._encoder_block(e2, 256)
+        e4 = self._encoder_block(e3, 512)
+        e5 = self._encoder_block(e4, 512)
+        e6 = self._encoder_block(e5, 512)
+        e7 = self._encoder_block(e6, 512)
 
-        # Discriminators determines validity of translated images / condition pairs
-        valid = self.discriminator([generate_RGB, img_GRAY])
+        # bottleneck, no batch norm and relu
+        b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(e7)
+        b = Activation('relu')(b)
 
-        self.combined = tf.keras.Model(inputs=[img_R, img_GRAY], outputs=[valid, generate_GB])
-        self.combined.compile(loss=[tf.keras.losses.BinaryCrossentropy(from_logits=True), 'mae'],
-                              loss_weights=[1, 1],
-                              optimizer=optimizer)
+        # decoder model
+        d1 = self._decoder_block(b, e7, 512)
+        d2 = self._decoder_block(d1, e6, 512)
+        d3 = self._decoder_block(d2, e5, 512)
+        d4 = self._decoder_block(d3, e4, 512, dropout=False)
+        d5 = self._decoder_block(d4, e3, 256, dropout=False)
+        d6 = self._decoder_block(d5, e2, 128, dropout=False)
+        d7 = self._decoder_block(d6, e1, 64, dropout=False)
 
-    def build_generator(self, gen_input_shape=(512, 512, 1)):
-        self.initializer = tf.random_normal_initializer(0., 0.02)
+        # output
+        g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
+        out_image = Activation('tanh')(g)
 
-        """U-Net Generator"""
+        # define model
+        model = Model(input_src_image, out_image, name='generator_model')
 
-        def conv2d(layer_input, filters, f_size=4, bn=True):
-            """Layers used during downsampling"""
-            d = Conv2D(filters, kernel_size=(f_size, f_size), strides=2, padding='same',
-                        kernel_initializer=self.initializer, use_bias=False)(layer_input)
-            if bn:
-                d = BatchNormalization(momentum=0.8)(d)
-            d = LeakyReLU(alpha=0.2)(d)
-            return d
+        return model
 
-        def deconv2d(layer_input, skip_input, filters, f_size=4, dropout_rate=0.5, use_dropout=False):
-            """Layers used during upsampling"""
-            u = Conv2DTranspose(filters, kernel_size=(f_size, f_size), strides=2, padding='same',
-                                kernel_initializer=self.initializer, use_bias=False)(layer_input)
-            u = BatchNormalization(momentum=0.8)(u)
-            if use_dropout:
-                u = Dropout(dropout_rate)(u)
-            
-            u = Concatenate()([u, skip_input])
-            return u
+    def _decoder_block(self, layer_in, skip_in, n_filters, dropout=True):
+        kernel_weights_init = RandomNormal(stddev=0.02)
+        # add upsampling layer
+        g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(layer_in)
+        # add batch normalization
+        g = BatchNormalization()(g, training=True)
+        if dropout:
+            g = Dropout(0.5)(g, training=True)
+        # merge with skip connection
+        g = Concatenate()([g, skip_in])
+        # relu activation
+        g = Activation('relu')(g)
 
-        # Image input
-        d0 = Input(shape=gen_input_shape) # (256, 256, 1)
+        return g
 
-        # Downsampling
-        d1 = conv2d(d0, self.gf, bn=False) # 128
-        d2 = conv2d(d1, self.gf*2) # 64
-        d3 = conv2d(d2, self.gf*4) # 32
-        d4 = conv2d(d3, self.gf*8) # 16
-        d5 = conv2d(d4, self.gf*8) # 8
-        d6 = conv2d(d5, self.gf*8) # 4
-        d7 = conv2d(d6, self.gf*8) # 2
-        d8 = conv2d(d7, self.gf*8) # 1
+    def _encoder_block(self, layer_in, n_filters, batchnorm=True):
+        kernel_weights_init = RandomNormal(stddev=0.02)
+        # add downsampling layer
+        g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(layer_in)
+        if batchnorm:
+            g = BatchNormalization()(g, training=True)
+        # leaky relu activation
+        g = LeakyReLU(alpha=0.2)(g)
 
-        # Upsampling
-        u0 = deconv2d(d8, d7, self.gf*8, use_dropout=True) # 2
-        u1 = deconv2d(u0, d6, self.gf*8, use_dropout=True) # 4
-        u2 = deconv2d(u1, d5, self.gf*8, use_dropout=True) # 8
-        u3 = deconv2d(u2, d4, self.gf*8) # 16
-        u4 = deconv2d(u3, d3, self.gf*4) # 32
-        u5 = deconv2d(u4, d2, self.gf*2) # 64
-        u6 = deconv2d(u5, d1, self.gf) # 128
-
-        output = Conv2DTranspose(2, kernel_size=(4, 4), strides=2, padding='same',
-                                kernel_initializer=self.initializer, use_bias=True,
-                                activation='tanh')(u6)
-
-        return tf.keras.Model(d0, output)
+        return g
 
     def build_discriminator(self):
-        self.initializer = tf.random_normal_initializer(0., 0.02)
-        def d_layer(layer_input, filters, f_size=4, bn=True):
-            """Discriminator layer"""
-            d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same', kernel_initializer=self.initializer)(layer_input)
-            if bn:
-                d = BatchNormalization(momentum=0.8)(d)
-            d = LeakyReLU(alpha=0.2)(d)
-            
-            return d
-            
-        img_RGB = Input(shape=(512, 512, 3)) # (512, 512, 2) GB channel
-        img_GRAY = Input(shape=(512, 512, 1)) # (512, 512, 1) R channel
-        
+        kernel_weights_init = RandomNormal(stddev=0.02)
 
-        # Concatenate image and conditioning image by channels to produce input
-        combined_imgs = Concatenate(axis=-1)([img_RGB, img_GRAY])
+        src_image_shape = (512, 512, 1)
+        target_image_shape = (512, 512, 3)
 
-        d1 = d_layer(combined_imgs, self.df, bn=False)
-        d2 = d_layer(d1, self.df*2)
-        d3 = d_layer(d2, self.df*4)
-        d4 = d_layer(d3, self.df*8)
+        input_src_image = Input(shape=src_image_shape)
+        input_target_image = Input(shape=target_image_shape)
 
-        validity = Conv2D(1, kernel_size=4, strides=1, padding='same', kernel_initializer=self.initializer)(d4)
+        # concatenate images channel-wise
+        merged = Concatenate()([input_src_image, input_target_image])
+        # C64
+        d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(merged)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C128
+        d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C256
+        d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C512
+        d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # second last output layer
+        d = Conv2D(512, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
 
-        return tf.keras.Model([img_RGB, img_GRAY], validity)
+        # patch output
+        d = Conv2D(1, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
+        patch_out = Activation('sigmoid')(d)
+
+        # define model
+        model = Model([input_src_image, input_target_image], patch_out, name='descriminator_model')
+        opt = Adam(lr=0.0002, beta_1=0.5)
+        model.compile(loss='binary_crossentropy', optimizer=opt, loss_weights=[0.5])
+
+        return model
 
     def demo_prepare(self, path):
         img = tf.io.read_file(path)
@@ -218,6 +227,7 @@ class Pix2Pix():
                 
                 dis_res = 0
                 index = 0
+
                 for features in pbar:
                     batch_counter += 1
                     # ---------------------
@@ -240,23 +250,21 @@ class Pix2Pix():
                     img = tf.cast(img, tf.float32) 
                     NORM_RGB = (img / 127.5) - 1
                     NORM_GRAY = (gray / 127.5) - 1
-                    
-                    R = NORM_RGB[:, :, :, :1]
-                    GB = NORM_RGB[:, :, :, 1:]
 
-
-                    pred_gb = self.generator.predict(R)
-                    pred_rgb = tf.concat([R, pred_gb], axis=-1)
+                    pred_rgb = self.gen_model.predict(NORM_GRAY)
                     
-                    d_real = self.discriminator.train_on_batch([NORM_GRAY, NORM_RGB], real_y_dis)
-                    d_fake = self.discriminator.train_on_batch([NORM_GRAY, pred_rgb], fake_y_dis)
+                    d_real = self.d_model.train_on_batch([NORM_GRAY, NORM_RGB], real_y_dis)
+                    d_fake = self.d_model.train_on_batch([NORM_GRAY, pred_rgb], fake_y_dis)
                     dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                    gan_res = self.combined.train_on_batch([R, NORM_GRAY], [real_y_dis, GB])
+                    gan_res = self.gan_model.train_on_batch(NORM_GRAY, [real_y_dis, NORM_RGB])
                     
                     
-                    pbar.set_description("Epoch : %d Dis loss: %f Dis ACC: %f Gan loss: %f, MSE loss: %f" % (epoch, dis_res[0],
-                                            100 * dis_res[1], gan_res[0], gan_res[2]))
+                    pbar.set_description("Epoch : %d Dis loss: %f Gan loss: %f, MSE loss: %f" % (epoch,
+                                             dis_res,
+                                            
+                                             gan_res[0],
+                                              gan_res[1]))
                     
                 # if epoch % 5 == 0:
                 self.generator.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
@@ -269,26 +277,20 @@ class Pix2Pix():
                 for img in demo_test:
                     img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
 
-                    img = tf.cast(img, tf.float32) 
-                    NORM_RGB = (img / 127.5) - 1
+                    gray = color.rgb2gray(img)
+                    gray = tf.cast(gray, tf.float32)
+                    gray = tf.expand_dims(gray, axis=-1)
                     
-                    R = NORM_RGB[:, :, :, :1]
-                    GB = NORM_RGB[:, :, :, 1:]
+                    NORM_GRAY = (gray / 127.5) - 1
 
 
+                    pred_rgb = self.gen_model.predict(NORM_GRAY)
 
-                    pred_gb = self.generator.predict(R)
-
-                    for i in range(len(pred_gb)):
-                        batch_R = R[i]
-                        batch_R = (batch_R + 1) * 127.5
-
-                        batch_pred = pred_gb[i]
+                    for i in range(len(pred_rgb)):
+                        batch_pred = pred_rgb[i]
                         batch_pred = (batch_pred + 1) * 127.5
 
-                        PRED_RGB = tf.concat([batch_R, batch_pred], axis=-1)
-
-                        PRED_RGB = tf.cast(PRED_RGB, tf.uint8)
+                        PRED_RGB = tf.cast(batch_pred, tf.uint8)
 
                         plt.imshow(PRED_RGB)
 

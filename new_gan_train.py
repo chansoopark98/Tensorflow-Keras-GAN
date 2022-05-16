@@ -159,7 +159,7 @@ class Pix2Pix():
     
     def train(self):
         EPOCHS = 30
-        BATCH_SIZE = 8
+        BATCH_SIZE = 2
         INPUT_SHAPE_GEN = (512, 512, 1)
         
     
@@ -232,8 +232,10 @@ class Pix2Pix():
                         img = tf.image.flip_left_right(img)
 
                     img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
-                    gray = tf.image.rgb_to_grayscale(img)
+                    
+                    gray = color.rgb2gray(img)
                     gray = tf.cast(gray, tf.float32)
+                    gray = tf.expand_dims(gray, axis=-1)
 
                     img = tf.cast(img, tf.float32) 
                     NORM_RGB = (img / 127.5) - 1

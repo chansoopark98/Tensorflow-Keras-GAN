@@ -44,7 +44,7 @@ if __name__ == "__main__":
     train_data = train_data.batch(1)
 
 
-    for batch in train_data.take(2):
+    for batch in train_data.take(5):
 
         # img = batch['image']
         img = batch[0]
@@ -52,7 +52,8 @@ if __name__ == "__main__":
         
         original = img
 
-        gray = tf.image.rgb_to_grayscale(img)
+        # gray = tf.image.rgb_to_grayscale(img)
+        gray = color.rgb2gray(img)
         
         img = tf.cast(img, tf.float32) # if use ycbcr
         NORM_RGB = (img / 127.5) - 1
@@ -82,7 +83,7 @@ if __name__ == "__main__":
         ax0.axis("off")
 
         ax0 = fig.add_subplot(rows, cols, 4)
-        ax0.imshow(gray[:, :, 0])
+        ax0.imshow(gray)
         ax0.set_title('b')
         ax0.axis("off")
 

@@ -23,7 +23,8 @@ def demo_prepare(path):
 # train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
 
 if __name__ == "__main__":
-
+    batch_size = 1
+    demo = False
     celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
@@ -35,16 +36,19 @@ if __name__ == "__main__":
     train_data = train_data.padded_batch(1)
     train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
-    batch_size = 2 
+
+    if demo:
     # prepare validation dataset
-    filenames = os.listdir('./demo_images')
-    filenames.sort()
-    train_data = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
-    train_data = train_data.map(demo_prepare)
-    train_data = train_data.batch(batch_size)
+        filenames = os.listdir('./demo_images')
+        filenames.sort()
+        train_data = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
+        train_data = train_data.map(demo_prepare)
+        train_data = train_data.batch(batch_size)
 
 
-    for batch in train_data.take(2):
+    for batch in train_data.take(100):
+        if demo is False:
+            batch = batch['image']
 
         img = tf.image.resize(batch, (512, 512))
         
@@ -53,14 +57,41 @@ if __name__ == "__main__":
         # gray = tf.image.rgb_to_grayscale(img)
         gray = color.rgb2gray(img)
         
+        
+        lab = color.rgb2lab(img / 255.)        
+        rgb = color.lab2rgb(lab)
+
+        
         img = tf.cast(img, tf.float32) # if use ycbcr
         for i in range(batch_size):
-       
+            
+            l_channel = lab[i, :, :, 0]
+            
+            a_channel = lab[i, :, :, 1]
+            
+            b_channel = lab[i, :, :, 2]
+
+
+            l_channel /= 100.
+
+            a_channel /= 127.
+
+            b_channel /= 127.
+
+            print('a_channel max', np.max(a_channel))
+            print('a_channel min', np.min(a_channel))
+            print('b_channel max', np.max(b_channel))
+            print('b_channel min', np.min(b_channel))
+            
+
+            # l_channel = l_channel / np.max(l_channel)
+            # l_channel = (l_channel-0.5)/0.5
+
+
             NORM_RGB = (img[i] / 127.5) - 1
             
             R = NORM_RGB[:, :, :1]
             GB = NORM_RGB[:, :, 1:]
-            
             
 
             rows = 1
@@ -68,23 +99,23 @@ if __name__ == "__main__":
             fig = plt.figure()
 
             ax0 = fig.add_subplot(rows, cols, 1)
-            ax0.imshow(R[:, :, 0])
+            ax0.imshow(rgb[0])
             ax0.set_title('r')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 2)
-            ax0.imshow(GB[:, :, 0])
-            ax0.set_title('g')
+            ax0.imshow(l_channel)
+            ax0.set_title('l_channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 3)
-            ax0.imshow(GB[:, :, 1])
-            ax0.set_title('b')
+            ax0.imshow(a_channel)
+            ax0.set_title('a_channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 4)
-            ax0.imshow(gray[i])
-            ax0.set_title('b')
+            ax0.imshow(b_channel)
+            ax0.set_title('b_channel')
             ax0.axis("off")
 
 

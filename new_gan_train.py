@@ -85,7 +85,7 @@ class Pix2Pix():
         d7 = self._decoder_block(d6, e1, 64, dropout=False)
 
         # output
-        g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
+        g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
         out_image = Activation('tanh')(g)
 
         # define model
@@ -123,7 +123,7 @@ class Pix2Pix():
         kernel_weights_init = RandomNormal(stddev=0.02)
 
         src_image_shape = (512, 512, 1)
-        target_image_shape = (512, 512, 3)
+        target_image_shape = (512, 512, 2)
 
         input_src_image = Input(shape=src_image_shape)
         input_target_image = Input(shape=target_image_shape)
@@ -171,7 +171,6 @@ class Pix2Pix():
         BATCH_SIZE = 8
         INPUT_SHAPE_GEN = (512, 512, 1)
         
-    
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
         disc_patch = (patch, patch, 1)
 
@@ -243,26 +242,29 @@ class Pix2Pix():
 
                     img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
                     
-                    gray = color.rgb2gray(img)
-                    gray = tf.cast(gray, tf.float32)
-                    gray = tf.expand_dims(gray, axis=-1)
-
-                    img = tf.cast(img, tf.float32) 
-                    NORM_RGB = (img / 127.5) - 1
-                    NORM_GRAY = (gray / 127.5) - 1
-
-                    pred_rgb = self.gen_model.predict(NORM_GRAY)
+                    img /= 255. # normalize image 0 ~ 1.
+                    img = tf.cast(img, tf.float32)
                     
-                    d_real = self.d_model.train_on_batch([NORM_GRAY, NORM_RGB], real_y_dis)
-                    d_fake = self.d_model.train_on_batch([NORM_GRAY, pred_rgb], fake_y_dis)
+                    lab = color.rgb2lab(img)
+
+                    l_channel = lab[:, :, :, :1]
+                    ab_channel = lab[:, :, :, 1:]
+
+                    l_channel /= 100.
+                    ab_channel /= 127.
+                    
+
+                    pred_ab = self.gen_model.predict(l_channel)
+                    
+                    d_real = self.d_model.train_on_batch([l_channel, ab_channel], real_y_dis)
+                    d_fake = self.d_model.train_on_batch([l_channel, pred_ab], fake_y_dis)
                     dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                    gan_res = self.gan_model.train_on_batch(NORM_GRAY, [real_y_dis, NORM_RGB])
+                    gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
                     
                     
                     pbar.set_description("Epoch : %d Dis loss: %f Gan loss: %f, MSE loss: %f" % (epoch,
                                              dis_res,
-                                            
                                              gan_res[0],
                                               gan_res[1]))
                     
@@ -276,23 +278,33 @@ class Pix2Pix():
                 # validation
                 for img in demo_test:
                     img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
-
-                    gray = color.rgb2gray(img)
-                    gray = tf.cast(gray, tf.float32)
-                    gray = tf.expand_dims(gray, axis=-1)
                     
-                    NORM_GRAY = (gray / 127.5) - 1
+                    img /= 255. # normalize image 0 ~ 1.
+                    img = tf.cast(img, tf.float32)
+                    
+                    lab = color.rgb2lab(img)
+
+                    l_channel = lab[:, :, :, :1]
+                    ab_channel = lab[:, :, :, 1:]
+
+                    l_channel /= 100.
+                    ab_channel /= 127.
 
 
-                    pred_rgb = self.gen_model.predict(NORM_GRAY)
+                    pred_ab = self.gen_model.predict(l_channel)
 
-                    for i in range(len(pred_rgb)):
-                        batch_pred = pred_rgb[i]
-                        batch_pred = (batch_pred + 1) * 127.5
+                    for i in range(len(pred_ab)):
 
-                        PRED_RGB = tf.cast(batch_pred, tf.uint8)
+                        batch_l = l_channel * 100.
+                        batch_ab = pred_ab[i]
+                        batch_ab *= 127.
+                        
+                        batch_lab = tf.concat([batch_l, batch_ab], axis=-1)
 
-                        plt.imshow(PRED_RGB)
+                        batch_lab = color.lab2rgb(batch_lab)
+                        
+
+                        plt.imshow(batch_lab)
 
                         plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
                         index +=1

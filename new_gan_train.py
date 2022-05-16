@@ -52,93 +52,101 @@ class Pix2Pix():
         self.generator = self.build_generator()
 
         # Input images and their conditioning images
-        img_A = Input(shape=(512, 512, 2)) # (512, 512, 2)
-        img_B = Input(shape=(512, 512, 1)) # (512, 512, 1)
+        img_R = Input(shape=(512, 512, 1)) # (512, 512, 2)
+        img_GB = Input(shape=(512, 512, 2)) # (512, 512, 1)
 
         # By conditioning on B generate a fake version of A
-        fake_A = self.generator(img_B) # Input : 512, 512, 1 Output : 512, 512, 2
+        generate_GB = self.generator(img_R) # Input : 512, 512, 1 Output : 512, 512, 2
 
         # For the combined model we will only train the generator
         self.discriminator.trainable = False
 
         # Discriminators determines validity of translated images / condition pairs
-        valid = self.discriminator([img_B, fake_A])
+        valid = self.discriminator([img_R, generate_GB])
 
-        self.combined = tf.keras.Model(inputs=[img_B, img_A], outputs=[valid, fake_A])
+        self.combined = tf.keras.Model(inputs=[img_R, img_GB], outputs=[valid, generate_GB])
         self.combined.compile(loss=['mse', 'mae'],
                               loss_weights=[1, 100],
                               optimizer=optimizer)
 
     def build_generator(self, gen_input_shape=(512, 512, 1)):
+        self.initializer = tf.random_normal_initializer(0., 0.02)
+
         """U-Net Generator"""
 
         def conv2d(layer_input, filters, f_size=4, bn=True):
             """Layers used during downsampling"""
-            d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
-            d = LeakyReLU(alpha=0.2)(d)
+            d = Conv2D(filters, kernel_size=(f_size, f_size), strides=2, padding='same',
+                        kernel_initializer=self.initializer, use_bias=False)(layer_input)
             if bn:
                 d = BatchNormalization(momentum=0.8)(d)
+            d = LeakyReLU(alpha=0.2)(d)
             return d
 
-        def deconv2d(layer_input, skip_input, filters, f_size=4, dropout_rate=0):
+        def deconv2d(layer_input, skip_input, filters, f_size=4, dropout_rate=0.5, use_dropout=False):
             """Layers used during upsampling"""
-            u = UpSampling2D(size=2)(layer_input)
-            u = Conv2D(filters, kernel_size=f_size, strides=1, padding='same', activation='relu')(u)
-            if dropout_rate:
-                u = Dropout(dropout_rate)(u)
+            u = Conv2DTranspose(filters, kernel_size=(f_size, f_size), strides=2, padding='same',
+                                kernel_initializer=self.initializer, use_bias=False)(layer_input)
             u = BatchNormalization(momentum=0.8)(u)
+            if use_dropout:
+                u = Dropout(dropout_rate)(u)
+            
             u = Concatenate()([u, skip_input])
             return u
 
         # Image input
-        d0 = Input(shape=gen_input_shape) # (512, 512, 1)
+        d0 = Input(shape=gen_input_shape) # (256, 256, 1)
 
         # Downsampling
-        d1 = conv2d(d0, self.gf, bn=False)
-        d2 = conv2d(d1, self.gf*2)
-        d3 = conv2d(d2, self.gf*4)
-        d4 = conv2d(d3, self.gf*8)
-        d5 = conv2d(d4, self.gf*8)
-        d6 = conv2d(d5, self.gf*8)
-        d7 = conv2d(d6, self.gf*8)
+        d1 = conv2d(d0, self.gf, bn=False) # 128
+        d2 = conv2d(d1, self.gf*2) # 64
+        d3 = conv2d(d2, self.gf*4) # 32
+        d4 = conv2d(d3, self.gf*8) # 16
+        d5 = conv2d(d4, self.gf*8) # 8
+        d6 = conv2d(d5, self.gf*8) # 4
+        d7 = conv2d(d6, self.gf*8) # 2
+        d8 = conv2d(d7, self.gf*8) # 1
 
         # Upsampling
-        u1 = deconv2d(d7, d6, self.gf*8)
-        u2 = deconv2d(u1, d5, self.gf*8)
-        u3 = deconv2d(u2, d4, self.gf*8)
-        u4 = deconv2d(u3, d3, self.gf*4)
-        u5 = deconv2d(u4, d2, self.gf*2)
-        u6 = deconv2d(u5, d1, self.gf)
+        u0 = deconv2d(d8, d7, self.gf*8, use_dropout=True) # 2
+        u1 = deconv2d(u0, d6, self.gf*8, use_dropout=True) # 4
+        u2 = deconv2d(u1, d5, self.gf*8, use_dropout=True) # 8
+        u3 = deconv2d(u2, d4, self.gf*8) # 16
+        u4 = deconv2d(u3, d3, self.gf*4) # 32
+        u5 = deconv2d(u4, d2, self.gf*2) # 64
+        u6 = deconv2d(u5, d1, self.gf) # 128
 
-        u7 = UpSampling2D(size=2)(u6)
-        output_img = Conv2D(2, kernel_size=4, strides=1, padding='same', activation='tanh')(u7)
+        output = Conv2DTranspose(2, kernel_size=(4, 4), strides=2, padding='same',
+                                kernel_initializer=self.initializer, use_bias=True,
+                                activation='tanh')(u6)
 
-        return tf.keras.Model(d0, output_img)
+        return tf.keras.Model(d0, output)
 
     def build_discriminator(self):
-
+        self.initializer = tf.random_normal_initializer(0., 0.02)
         def d_layer(layer_input, filters, f_size=4, bn=True):
             """Discriminator layer"""
-            d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same')(layer_input)
-            d = LeakyReLU(alpha=0.2)(d)
+            d = Conv2D(filters, kernel_size=f_size, strides=2, padding='same', kernel_initializer=self.initializer)(layer_input)
             if bn:
                 d = BatchNormalization(momentum=0.8)(d)
+            d = LeakyReLU(alpha=0.2)(d)
+            
             return d
 
-        img_A = Input(shape=(512, 512, 1)) # (512, 512, 1) R channel
-        img_B = Input(shape=(512, 512, 2)) # (512, 512, 2) GB channel
+        img_R = Input(shape=(512, 512, 1)) # (512, 512, 1) R channel
+        img_GB = Input(shape=(512, 512, 2)) # (512, 512, 2) GB channel
 
         # Concatenate image and conditioning image by channels to produce input
-        combined_imgs = Concatenate(axis=-1)([img_A, img_B])
+        combined_imgs = Concatenate(axis=-1)([img_R, img_GB])
 
         d1 = d_layer(combined_imgs, self.df, bn=False)
         d2 = d_layer(d1, self.df*2)
         d3 = d_layer(d2, self.df*4)
         d4 = d_layer(d3, self.df*8)
 
-        validity = Conv2D(1, kernel_size=4, strides=1, padding='same')(d4)
+        validity = Conv2D(1, kernel_size=4, strides=1, padding='same', kernel_initializer=self.initializer)(d4)
 
-        return tf.keras.Model([img_A, img_B], validity)
+        return tf.keras.Model([img_R, img_GB], validity)
 
     def demo_prepare(self, path):
         img = tf.io.read_file(path)
@@ -238,8 +246,8 @@ class Pix2Pix():
                     gan_res = self.combined.train_on_batch([R, GB], [real_y_dis, GB])
                     
                     
-                    pbar.set_description("Epoch : %d Dis loss: %f Dis ACC: %f Gan loss: %f" % (epoch, dis_res[0],
-                                            100 * dis_res[1], gan_res[0]))
+                    pbar.set_description("Epoch : %d Dis loss: %f Dis ACC: %f Gan loss: %f, MSE loss: %f" % (epoch, dis_res[0],
+                                            100 * dis_res[1], gan_res[0], gan_res[2]))
                     
                 # if epoch % 5 == 0:
                 self.generator.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)

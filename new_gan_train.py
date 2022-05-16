@@ -1,3 +1,4 @@
+from sre_parse import FLAGS
 import tensorflow as tf
 import os
 from tensorflow.keras.layers import Input, concatenate
@@ -120,6 +121,45 @@ class Pix2Pix():
         return g
 
     def build_discriminator(self):
+        # kernel_weights_init = RandomNormal(stddev=0.02)
+
+        # src_image_shape = (512, 512, 1)
+        # target_image_shape = (512, 512, 2)
+
+        # input_src_image = Input(shape=src_image_shape)
+        # input_target_image = Input(shape=target_image_shape)
+
+        # # concatenate images channel-wise
+        # merged = Concatenate()([input_src_image, input_target_image])
+        # # C64
+        # d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(merged)
+        # d = LeakyReLU(alpha=0.2)(d)
+        # # C128
+        # d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        # d = BatchNormalization()(d)
+        # d = LeakyReLU(alpha=0.2)(d)
+        # # C256
+        # d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        # d = BatchNormalization()(d)
+        # d = LeakyReLU(alpha=0.2)(d)
+        # # C512
+        # d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        # d = BatchNormalization()(d)
+        # d = LeakyReLU(alpha=0.2)(d)
+        # # second last output layer
+        # d = Conv2D(512, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
+        # d = BatchNormalization()(d)
+        # d = LeakyReLU(alpha=0.2)(d)
+
+        # # for patchGAN
+        # # d = Conv2D(1, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
+        # patch_out = Activation('sigmoid')(d)
+
+        # # define model
+        # model = Model([input_src_image, input_target_image], patch_out, name='descriminator_model')
+        # opt = Adam(lr=0.0002, beta_1=0.5)
+        # model.compile(loss='binary_crossentropy', optimizer=opt, loss_weights=[0.5])
+
         kernel_weights_init = RandomNormal(stddev=0.02)
 
         src_image_shape = (512, 512, 1)
@@ -146,12 +186,13 @@ class Pix2Pix():
         d = BatchNormalization()(d)
         d = LeakyReLU(alpha=0.2)(d)
         # second last output layer
-        d = Conv2D(512, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = Conv2D(1024, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization()(d)
         d = LeakyReLU(alpha=0.2)(d)
 
-        # patch output
-        d = Conv2D(1, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
+        # for patchGAN
+        d = Flatten()(d)
+        d = Dense(1, use_bias=True, kernel_initializer=kernel_weights_init)(d)
         patch_out = Activation('sigmoid')(d)
 
         # define model
@@ -168,7 +209,7 @@ class Pix2Pix():
     
     def train(self):
         EPOCHS = 30
-        BATCH_SIZE = 8
+        BATCH_SIZE = 4
         INPUT_SHAPE_GEN = (512, 512, 1)
         
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
@@ -216,8 +257,10 @@ class Pix2Pix():
         for steps in range(len(SCALE_STEP)):
             IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
 
-            fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
-            real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
+            # fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
+            # real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
+            fake_y_dis = tf.zeros((BATCH_SIZE, 1))
+            real_y_dis = tf.ones((BATCH_SIZE, 1))
             # real_y_dis = tf.random.uniform(shape=[(BATCH_SIZE,) + disc_patch], minval=0.9, maxval=1)
 
             for epoch in range(EPOCHS):

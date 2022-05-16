@@ -68,38 +68,38 @@ if __name__ == "__main__":
 
 
             NORM_RGB = (img[i] / 127.5) - 1
-            
-            R = NORM_RGB[:, :, 0]
-            G = NORM_RGB[:, :, 1]
-            B = NORM_RGB[:, :, 2]
+            norm_lab = lab [i]
+            R = norm_lab[:, :, 0]
+            G = norm_lab[:, :, 1]
+            B = norm_lab[:, :, 2]
             
             
 
             rows = 1
-            cols = 4
+            cols = 3
             fig = plt.figure()
 
             ax0 = fig.add_subplot(rows, cols, 1)
-            ax0.imshow(rgb[0])
-            ax0.set_title('RGB image')
+            ax0.imshow(R)
+            ax0.set_title('L channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 2)
-            ax0.imshow(R)
-            ax0.set_title('R channel')
+            ax0.imshow(G)
+            ax0.set_title('a channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 3)
-            ax0.imshow(G)
-            ax0.set_title('G channel')
-            ax0.axis("off")
-
-            ax0 = fig.add_subplot(rows, cols, 4)
             ax0.imshow(B)
-            ax0.set_title('B channel')
+            ax0.set_title('b channel')
             ax0.axis("off")
 
-            plt.savefig('Holo_rgb.png', dpi=500)
+            # ax0 = fig.add_subplot(rows, cols, 4)
+            # ax0.imshow(B)
+            # ax0.set_title('B channel')
+            # ax0.axis("off")
+
+            plt.savefig('lab.png', dpi=500)
             plt.show()
             
 

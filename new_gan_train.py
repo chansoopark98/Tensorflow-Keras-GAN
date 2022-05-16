@@ -39,7 +39,7 @@ class Pix2Pix():
 
         # Build and compile the discriminator
         self.discriminator = self.build_discriminator()
-        self.discriminator.compile(loss='mse',
+        self.discriminator.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
             optimizer=optimizer,
             metrics=['accuracy'])
 
@@ -53,20 +53,23 @@ class Pix2Pix():
 
         # Input images and their conditioning images
         img_R = Input(shape=(512, 512, 1)) # (512, 512, 2)
-        img_GB = Input(shape=(512, 512, 2)) # (512, 512, 1)
+        img_GRAY = Input(shape=(512, 512, 1)) # (512, 512, 1)
+        
 
         # By conditioning on B generate a fake version of A
         generate_GB = self.generator(img_R) # Input : 512, 512, 1 Output : 512, 512, 2
+
+        generate_RGB = tf.concat([img_R, generate_GB], axis=-1)
 
         # For the combined model we will only train the generator
         self.discriminator.trainable = False
 
         # Discriminators determines validity of translated images / condition pairs
-        valid = self.discriminator([img_R, generate_GB])
+        valid = self.discriminator([generate_RGB, img_GRAY])
 
-        self.combined = tf.keras.Model(inputs=[img_R, img_GB], outputs=[valid, generate_GB])
-        self.combined.compile(loss=['mse', 'mae'],
-                              loss_weights=[1, 100],
+        self.combined = tf.keras.Model(inputs=[img_R, img_GRAY], outputs=[valid, generate_GB])
+        self.combined.compile(loss=[tf.keras.losses.BinaryCrossentropy(from_logits=True), 'mae'],
+                              loss_weights=[1, 1],
                               optimizer=optimizer)
 
     def build_generator(self, gen_input_shape=(512, 512, 1)):
@@ -132,12 +135,13 @@ class Pix2Pix():
             d = LeakyReLU(alpha=0.2)(d)
             
             return d
-
-        img_R = Input(shape=(512, 512, 1)) # (512, 512, 1) R channel
-        img_GB = Input(shape=(512, 512, 2)) # (512, 512, 2) GB channel
+            
+        img_RGB = Input(shape=(512, 512, 3)) # (512, 512, 2) GB channel
+        img_GRAY = Input(shape=(512, 512, 1)) # (512, 512, 1) R channel
+        
 
         # Concatenate image and conditioning image by channels to produce input
-        combined_imgs = Concatenate(axis=-1)([img_R, img_GB])
+        combined_imgs = Concatenate(axis=-1)([img_RGB, img_GRAY])
 
         d1 = d_layer(combined_imgs, self.df, bn=False)
         d2 = d_layer(d1, self.df*2)
@@ -146,7 +150,7 @@ class Pix2Pix():
 
         validity = Conv2D(1, kernel_size=4, strides=1, padding='same', kernel_initializer=self.initializer)(d4)
 
-        return tf.keras.Model([img_R, img_GB], validity)
+        return tf.keras.Model([img_RGB, img_GRAY], validity)
 
     def demo_prepare(self, path):
         img = tf.io.read_file(path)
@@ -158,7 +162,7 @@ class Pix2Pix():
         BATCH_SIZE = 8
         INPUT_SHAPE_GEN = (512, 512, 1)
         
-
+    
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
         disc_patch = (patch, patch, 1)
 
@@ -228,22 +232,25 @@ class Pix2Pix():
                         img = tf.image.flip_left_right(img)
 
                     img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
+                    gray = tf.image.rgb_to_grayscale(img)
+                    gray = tf.cast(gray, tf.float32)
 
                     img = tf.cast(img, tf.float32) 
                     NORM_RGB = (img / 127.5) - 1
+                    NORM_GRAY = (gray / 127.5) - 1
                     
                     R = NORM_RGB[:, :, :, :1]
                     GB = NORM_RGB[:, :, :, 1:]
 
 
                     pred_gb = self.generator.predict(R)
-        
+                    pred_rgb = tf.concat([R, pred_gb], axis=-1)
                     
-                    d_real = self.discriminator.train_on_batch([R, GB], real_y_dis)
-                    d_fake = self.discriminator.train_on_batch([R, pred_gb], fake_y_dis)
+                    d_real = self.discriminator.train_on_batch([NORM_GRAY, NORM_RGB], real_y_dis)
+                    d_fake = self.discriminator.train_on_batch([NORM_GRAY, pred_rgb], fake_y_dis)
                     dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                    gan_res = self.combined.train_on_batch([R, GB], [real_y_dis, GB])
+                    gan_res = self.combined.train_on_batch([R, NORM_GRAY], [real_y_dis, GB])
                     
                     
                     pbar.set_description("Epoch : %d Dis loss: %f Dis ACC: %f Gan loss: %f, MSE loss: %f" % (epoch, dis_res[0],

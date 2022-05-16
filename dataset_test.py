@@ -52,6 +52,8 @@ if __name__ == "__main__":
         
         original = img
 
+        gray = tf.image.rgb_to_grayscale(img)
+        
         img = tf.cast(img, tf.float32) # if use ycbcr
         NORM_RGB = (img / 127.5) - 1
         
@@ -61,7 +63,7 @@ if __name__ == "__main__":
         
 
         rows = 1
-        cols = 3
+        cols = 4
         fig = plt.figure()
 
         ax0 = fig.add_subplot(rows, cols, 1)
@@ -76,6 +78,11 @@ if __name__ == "__main__":
 
         ax0 = fig.add_subplot(rows, cols, 3)
         ax0.imshow(GB[:, :, 1])
+        ax0.set_title('b')
+        ax0.axis("off")
+
+        ax0 = fig.add_subplot(rows, cols, 4)
+        ax0.imshow(gray[:, :, 0])
         ax0.set_title('b')
         ax0.axis("off")
 

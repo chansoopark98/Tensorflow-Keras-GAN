@@ -60,8 +60,33 @@ class Pix2Pix():
         # src image as input, generated image and real/fake classification as output
         self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
         
-        self.gan_model.compile(loss=['mse', 'mae'], optimizer=opt, loss_weights=[1, 100])
+        self.gan_model.compile(loss=['mse', self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 100])
 
+    def generator_loss(self, y_true, y_pred):
+        """_summary_
+
+        Args:
+            y_true (Tensor, float32 (B,H,W,2)): gt
+            y_pred (Tensor, float32 ((B,H,W,2)): dl model prediction
+        """
+        # Set alpha
+        alpha = 0.84
+        
+        # Calculate mae Loss
+        mae_loss = mean_absolute_error(y_true=y_true, y_pred=y_pred)
+        mae_loss = (1- alpha) * mae_loss
+        
+        # Calculate multi scale ssim loss
+        ms_ssim_loss = tf.image.ssim(img1=y_true, img2=y_pred, max_val=2.0)
+        ms_ssim_loss = 1 - tf.reduce_mean(ms_ssim_loss)
+        ms_ssim_loss = alpha * ms_ssim_loss
+        
+        total_loss = ms_ssim_loss + mae_loss
+        
+        return total_loss        
+        
+        
+    
     def build_generator(self):
         gen_input_shape=(self.image_size[0], self.image_size[1], 1)
 
@@ -258,7 +283,9 @@ class Pix2Pix():
                     l_channel = lab[:, :, :, :1]
                     ab_channel = lab[:, :, :, 1:]
 
-                    l_channel /= 100.
+                    # l_channel /= 100. ( 0 ~ 1 scaling )
+                    l_channel = (l_channel - 50.) / 50. # ( -1 ~ 1 scaling )
+                    
                     ab_channel /= 127.
                     
 
@@ -271,11 +298,13 @@ class Pix2Pix():
                     gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
                     
                     
-                    pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f Gan loss: %f, MSE loss: %f" % (epoch,
+                    pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
                                              dis_res[0],
                                              dis_res[1],
                                              gan_res[0],
-                                              gan_res[1]))
+                                              gan_res[1],
+                                              gan_res[2],
+                                              gan_res[3] * 100))
                     
                 # if epoch % 5 == 0:
                 self.gen_model.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
@@ -296,7 +325,7 @@ class Pix2Pix():
                     l_channel = lab[:, :, :, :1]
                     ab_channel = lab[:, :, :, 1:]
 
-                    l_channel /= 100.
+                    l_channel = (l_channel - 50.) / 50. # ( -1 ~ 1 scaling )
                     ab_channel /= 127.
 
 

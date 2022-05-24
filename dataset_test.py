@@ -25,7 +25,7 @@ def demo_prepare(path):
 
 if __name__ == "__main__":
     batch_size = 1
-    demo = True
+    demo = False
     celebA_hq = tfds.load('CustomCelebahq',
                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
@@ -53,10 +53,39 @@ if __name__ == "__main__":
 
         img = tf.image.resize(batch, (512, 512))
         
-        original = img       
+        original = img
+        
+        img /= 255. # normalize image 0 ~ 1.
+        img = tf.cast(img, tf.float32)
+        
+        lab = color.rgb2lab(img)
         
         
-        lab = color.rgb2lab(img / 255.)        
+        
+        
+        l_channel = lab[:, :, :, :1]
+        a_channel = lab[:, :, :, 1]
+        b_channel = lab[:, :, :, 2]
+        
+        print('L max :', np.max(l_channel), 'L min :', np.min(l_channel))
+        print('a max :', np.max(a_channel), 'a_min :', np.min(a_channel))
+        print('b max :', np.max(b_channel), 'b_min :', np.min(b_channel))
+        ab_channel = lab[:, :, :, 1:]
+
+        l_channel = (l_channel - 50) / 50.
+        ab_channel /= 127.
+        
+        
+        norm_lab = tf.concat([l_channel , ab_channel], axis=-1)
+        norm_lab_2 = norm_lab
+        
+        ssim_loss = tf.image.ssim(norm_lab, norm_lab_2, max_val=2.0)
+        ms_ssim_loss = tf.image.ssim_multiscale(norm_lab, norm_lab_2, max_val=2.0)
+        
+        
+        ssim_loss = tf.reduce_mean((1-ms_ssim_loss), axis=0)        
+        print(ssim_loss)
+            
         rgb = color.lab2rgb(lab)
 
         img = tf.cast(img, tf.float32) # if use ycbcr

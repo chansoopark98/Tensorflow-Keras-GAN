@@ -1,4 +1,3 @@
-from sre_parse import FLAGS
 import tensorflow as tf
 import os
 from tensorflow.keras.layers import Input, concatenate
@@ -28,6 +27,7 @@ class Pix2Pix():
         # Input shape
         self.img_rows = 512
         self.img_cols = 512
+        self.image_size = (self.img_rows, self.img_cols)
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
@@ -41,24 +41,29 @@ class Pix2Pix():
 
         opt = Adam(lr=0.0002, beta_1=0.5)
 
+        # Build discriminator
         self.d_model = self.build_discriminator()
+        self.d_model.compile(loss='mse', optimizer=opt, metrics=['accuracy'], loss_weights=[0.5])
+        self.d_model.summary()
+        
+        # Build generator
         self.gen_model = self.build_generator()
     
-
         self.d_model.trainable = False
-        input_src_image = Input(shape=(512, 512, 1)) # Input = GRAY SCALE IMAGE
-        gen_out = self.gen_model(input_src_image) # return RGB
+        
+        input_src_image = Input(shape=(512, 512, 1)) # Input = L channel input
+        gen_out = self.gen_model(input_src_image) # return ab channel
 
         # connect the source input and generator output to the discriminator input
-        dis_out = self.d_model([input_src_image, gen_out]) # GRAY, RGB
+        dis_out = self.d_model([input_src_image, gen_out]) #  L, ab channel
 
         # src image as input, generated image and real/fake classification as output
         self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
         
-        self.gan_model.compile(loss=['binary_crossentropy', 'mae'], optimizer=opt, loss_weights=[1, 100])
+        self.gan_model.compile(loss=['mse', 'mae'], optimizer=opt, loss_weights=[1, 100])
 
     def build_generator(self):
-        gen_input_shape=(512, 512, 1)
+        gen_input_shape=(self.image_size[0], self.image_size[1], 1)
 
         kernel_weights_init = RandomNormal(stddev=0.02)
         input_src_image = Input(shape=gen_input_shape)
@@ -121,49 +126,11 @@ class Pix2Pix():
         return g
 
     def build_discriminator(self):
-        # kernel_weights_init = RandomNormal(stddev=0.02)
-
-        # src_image_shape = (512, 512, 1)
-        # target_image_shape = (512, 512, 2)
-
-        # input_src_image = Input(shape=src_image_shape)
-        # input_target_image = Input(shape=target_image_shape)
-
-        # # concatenate images channel-wise
-        # merged = Concatenate()([input_src_image, input_target_image])
-        # # C64
-        # d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(merged)
-        # d = LeakyReLU(alpha=0.2)(d)
-        # # C128
-        # d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
-        # d = BatchNormalization()(d)
-        # d = LeakyReLU(alpha=0.2)(d)
-        # # C256
-        # d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
-        # d = BatchNormalization()(d)
-        # d = LeakyReLU(alpha=0.2)(d)
-        # # C512
-        # d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
-        # d = BatchNormalization()(d)
-        # d = LeakyReLU(alpha=0.2)(d)
-        # # second last output layer
-        # d = Conv2D(512, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
-        # d = BatchNormalization()(d)
-        # d = LeakyReLU(alpha=0.2)(d)
-
-        # # for patchGAN
-        # # d = Conv2D(1, (4,4), padding='same', kernel_initializer=kernel_weights_init)(d)
-        # patch_out = Activation('sigmoid')(d)
-
-        # # define model
-        # model = Model([input_src_image, input_target_image], patch_out, name='descriminator_model')
-        # opt = Adam(lr=0.0002, beta_1=0.5)
-        # model.compile(loss='binary_crossentropy', optimizer=opt, loss_weights=[0.5])
 
         kernel_weights_init = RandomNormal(stddev=0.02)
 
-        src_image_shape = (512, 512, 1)
-        target_image_shape = (512, 512, 2)
+        src_image_shape = (self.image_size[0], self.image_size[1], 1)
+        target_image_shape = (self.image_size[0], self.image_size[1], 2)
 
         input_src_image = Input(shape=src_image_shape)
         input_target_image = Input(shape=target_image_shape)
@@ -185,20 +152,12 @@ class Pix2Pix():
         d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization()(d)
         d = LeakyReLU(alpha=0.2)(d)
-        # second last output layer
-        d = Conv2D(1024, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
-        d = BatchNormalization()(d)
-        d = LeakyReLU(alpha=0.2)(d)
-
+        
         # for patchGAN
-        d = Flatten()(d)
-        d = Dense(1, use_bias=True, kernel_initializer=kernel_weights_init)(d)
-        patch_out = Activation('sigmoid')(d)
-
+        output = Conv2D(1, (4,4), strides=(1,1), padding='same', kernel_initializer=kernel_weights_init)(d)
+    
         # define model
-        model = Model([input_src_image, input_target_image], patch_out, name='descriminator_model')
-        opt = Adam(lr=0.0002, beta_1=0.5)
-        model.compile(loss='binary_crossentropy', optimizer=opt, loss_weights=[0.5])
+        model = Model([input_src_image, input_target_image], output, name='descriminator_model')
 
         return model
 
@@ -209,7 +168,7 @@ class Pix2Pix():
     
     def train(self):
         EPOCHS = 30
-        BATCH_SIZE = 4
+        BATCH_SIZE = 8
         INPUT_SHAPE_GEN = (512, 512, 1)
         
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
@@ -257,10 +216,10 @@ class Pix2Pix():
         for steps in range(len(SCALE_STEP)):
             IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
 
-            # fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
-            # real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
-            fake_y_dis = tf.zeros((BATCH_SIZE, 1))
-            real_y_dis = tf.ones((BATCH_SIZE, 1))
+            fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
+            real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
+            # fake_y_dis = tf.zeros((BATCH_SIZE, 1))
+            # real_y_dis = tf.ones((BATCH_SIZE, 1))
             # real_y_dis = tf.random.uniform(shape=[(BATCH_SIZE,) + disc_patch], minval=0.9, maxval=1)
 
             for epoch in range(EPOCHS):
@@ -278,12 +237,18 @@ class Pix2Pix():
                     # img = tf.cast(features['image'], tf.float32)
                     img = features['image']
                     
-
                     # data augmentation
                     if tf.random.uniform([], minval=0, maxval=1) > 0.5:
                         img = tf.image.flip_left_right(img)
+                        
+                    
+                    scale = tf.random.uniform([], 0.5, 1.5)
+                    
+                    nh = self.image_size[0] * scale
+                    nw = self.image_size[1] * scale
 
-                    img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
+                    img = tf.image.resize(img, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
+                    img = tf.image.resize_with_crop_or_pad(img, self.image_size[0], self.image_size[1])
                     
                     img /= 255. # normalize image 0 ~ 1.
                     img = tf.cast(img, tf.float32)
@@ -306,8 +271,9 @@ class Pix2Pix():
                     gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
                     
                     
-                    pbar.set_description("Epoch : %d Dis loss: %f Gan loss: %f, MSE loss: %f" % (epoch,
-                                             dis_res,
+                    pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f Gan loss: %f, MSE loss: %f" % (epoch,
+                                             dis_res[0],
+                                             dis_res[1],
                                              gan_res[0],
                                               gan_res[1]))
                     

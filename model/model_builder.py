@@ -18,3 +18,6 @@ def build_dis(image_size):
     model_input, model_output = build_patchDiscriminator(image_size=image_size)
 
     return model_input, model_output
+
+def build_gan(generator, discriminator):
+    

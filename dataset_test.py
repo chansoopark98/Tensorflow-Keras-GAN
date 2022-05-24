@@ -53,27 +53,20 @@ if __name__ == "__main__":
 
         img = tf.image.resize(batch, (512, 512))
         
-        original = img
-
-        # gray = tf.image.rgb_to_grayscale(img)
-        gray = color.rgb2gray(img)
+        original = img       
         
         
         lab = color.rgb2lab(img / 255.)        
         rgb = color.lab2rgb(lab)
 
-        
         img = tf.cast(img, tf.float32) # if use ycbcr
         for i in range(batch_size):
-
-
+            
             NORM_RGB = (img[i] / 127.5) - 1
             norm_lab = lab [i]
             R = norm_lab[:, :, 0]
             G = norm_lab[:, :, 1]
             B = norm_lab[:, :, 2]
-            
-            
 
             rows = 1
             cols = 3

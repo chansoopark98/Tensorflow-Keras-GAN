@@ -333,7 +333,8 @@ class Pix2Pix():
 
                     for i in range(len(pred_ab)):
 
-                        batch_l = l_channel[i] * 100.
+                        # batch_l = l_channel[i] * 100.
+                        batch_l = (l_channel[i] * 50) + 50.
                         batch_ab = pred_ab[i]
                         batch_ab *= 127.
                         

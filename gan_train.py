@@ -1,226 +1,391 @@
-# from __future__ import print_function, division
-from tensorflow.keras.layers import Input, Dense,  Flatten, Dropout, UpSampling2D, Conv2D
-from tensorflow.keras.layers import BatchNormalization, Activation, ZeroPadding2D, LeakyReLU, MaxPooling2D
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import backend as K
-from tensorflow.keras.mixed_precision import experimental as mixed_precision
-import tensorflow_io as tfio
+from re import A
 import tensorflow as tf
-import matplotlib.pyplot as plt
+import os
+from tensorflow.keras.layers import Input, concatenate
+from tensorflow.keras.layers import (
+    UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout, concatenate,
+    DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose, GlobalAveragePooling2D)
+
+from tensorflow.keras.initializers import RandomNormal
+from tensorflow.keras.models import Model
+from tensorflow.keras.activations import tanh, relu
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError, MeanSquaredError
+from tensorflow.keras.mixed_precision import experimental as mixed_precision
+import tensorflow.keras.backend as K
 from tqdm import tqdm
-import numpy as np
 import tensorflow_datasets as tfds
+import matplotlib.pyplot as plt
+import tensorflow_io as tfio
+from skimage import color
+import time
+import numpy as np
+# LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal 
 
-from utils.datasets import Dataset
-from model.model_builder import base_model
-from model.model import conv_module
 
-BATCH_SIZE = 8
-EPOCHS = 50
-DATASET_DIR = './datasets/'
-IMAGE_SIZE = (512, 512)
-num_classes = 2
-
-def l1(y_true, y_pred):
-    return K.mean(K.abs(y_pred - y_true))
-
-class GAN():
+class Pix2Pix():
     def __init__(self):
+        # Input shape
         self.img_rows = 512
         self.img_cols = 512
-        self.channels = 2
+        self.image_size = (self.img_rows, self.img_cols)
+        self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
-        self.latent_dim = 100
 
+        # Calculate output shape of D (PatchGAN)
+        patch = int(self.img_rows / 2**4)
+        self.disc_patch = (patch, patch, 1)
 
-        optimizer = Adam(0.0002, 0.5)
-        optimizer = mixed_precision.LossScaleOptimizer(optimizer, loss_scale='dynamic')  # tf2.4.1 이전
+        # Number of filters in the first layer of G and D
+        self.gf = 64
+        self.df = 64
 
-        # self.options = tf.data.Options()
-        # self.options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
+        opt = Adam(lr=0.0002, beta_1=0.5)
 
-        # self.train_dataset_config = Dataset(DATASET_DIR, IMAGE_SIZE, BATCH_SIZE, mode='train',
-        #                                dataset='CustomCelebahq')
-        # self.train_data = self.train_dataset_config.gan_trainData(self.train_dataset_config.train_data)
-        self.train_data = tfds.load('CustomCelebahq',
-                               data_dir=DATASET_DIR, split='train[:25%]')
-        self.number_train = self.train_data.reduce(0, lambda x, _: x + 1).numpy()
-        print("학습 데이터 개수", self.number_train)
-        self.train_data = self.train_data.shuffle(1024)
-        self.train_data = self.train_data.batch(BATCH_SIZE)
-        # self.train_data = self.train_data.prefetch(tf.data.experimental.AUTOTUNE)
-        # self.train_data = self.train_data.repeat()
+        # Build discriminator
+        self.d_model = self.build_discriminator()
+        self.d_model.compile(loss='mse', optimizer=opt, metrics=['accuracy'], loss_weights=[0.5])
+        self.d_model.summary()
+        
+        # Build generator
+        self.gen_model = self.build_generator()
+    
+        self.d_model.trainable = False
+        
+        input_src_image = Input(shape=(512, 512, 1)) # Input = L channel input
+        gen_out = self.gen_model(input_src_image) # return ab channel
 
-        # self.train_data = self.train_data.with_options(self.options)
-        # self.train_data = mirrored_strategy.experimental_distribute_dataset(self.train_data)
-        # options = tf.data.Options()
-        # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
-        # self.train_data = self.train_data.with_options(options)
+        # connect the source input and generator output to the discriminator input
+        dis_out = self.d_model(gen_out) #  L, ab channel
 
-        self.steps_per_epoch = self.number_train // BATCH_SIZE
+        # src image as input, generated image and real/fake classification as output
+        self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
+        
+        self.gan_model.compile(loss=['mse', self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 100])
 
+    def generator_loss(self, y_true, y_pred):
+        """_summary_
 
-        # Build and compile the discriminator
-        self.discriminator = self.build_discriminator()
-        self.discriminator.compile(loss='binary_crossentropy',
-            optimizer=optimizer,
-            metrics=['accuracy'])
-
-        # Build the generator
-        self.generator = self.build_generator()
-
-        # The generator takes noise as input and generates imgs
-        z = Input(shape=(512, 512, 1))
-        img = self.generator(z)
-
-        # For the combined model we will only train the generator
-        self.discriminator.trainable = False
-
-        # The discriminator takes generated images as input and determines validity
-        validity = self.discriminator(img)
-
-        # The combined model  (stacked generator and discriminator)
-        # Trains the generator to fool the discriminator
-        self.combined = Model(z, validity)
-        self.combined.compile(loss='mse', optimizer=optimizer)
-
+        Args:
+            y_true (Tensor, float32 (B,H,W,2)): gt
+            y_pred (Tensor, float32 ((B,H,W,2)): dl model prediction
+        """
+        # Set alpha
+        alpha = 0.84
+        
+        # Calculate mae Loss
+        mae_loss = tf.reduce_mean(mean_absolute_error(y_true=y_true, y_pred=y_pred))
+        # mae_loss = (1- alpha) * mae_loss
+        
+        # # Calculate multi scale ssim loss
+        # true_l_channel = y_true[:, :, :, :1]
+        # true_ab_channel = y_true[:, :, :, 1:]
+        
+        # true_l_channel = (true_l_channel * 50) + 50.
+        # true_ab_channel *= 127.
+        
+        # true_img = tf.concat([true_l_channel , true_ab_channel], axis=-1)
+        # true_img = tfio.experimental.color.lab_to_rgb(true_img)
+        
+        
+        # pred_l_channel = y_pred[:, :, :, :1]
+        # pred_ab_channel = y_pred[:, :, :, 1:]
+        
+        # pred_l_channel = (pred_l_channel * 50) + 50.
+        # pred_ab_channel *= 127.
+        
+        # pred_img = tf.concat([pred_l_channel , pred_ab_channel], axis=-1)
+        # pred_img = tfio.experimental.color.lab_to_rgb(pred_img)
+        
+        
+        # ms_ssim_loss = tf.image.ssim(img1=pred_img, img2=true_img, max_val=1.0)
+        # ms_ssim_loss = 1 - tf.reduce_mean(ms_ssim_loss)
+        # ms_ssim_loss = alpha * ms_ssim_loss
+        
+        # total_loss = ms_ssim_loss + mae_loss
+        
+        return mae_loss        
+        
+        
+    
     def build_generator(self):
+        gen_input_shape=(self.image_size[0], self.image_size[1], 1)
 
-        model_input, model_output = base_model(image_size=(512, 512, 1), num_classes=2)
-        model = tf.keras.Model(model_input, model_output)
+        kernel_weights_init = RandomNormal(stddev=0.02)
+        input_src_image = Input(shape=gen_input_shape)
+
+        # encoder model
+        e1 = self._encoder_block(input_src_image, 64, batchnorm=False)
+        e2 = self._encoder_block(e1, 128)
+        e3 = self._encoder_block(e2, 256)
+        e4 = self._encoder_block(e3, 512)
+        e5 = self._encoder_block(e4, 512)
+        e6 = self._encoder_block(e5, 512)
+        e7 = self._encoder_block(e6, 512)
+
+        # bottleneck, no batch norm and relu
+        b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(e7)
+        b = Activation('relu')(b)
+
+        # decoder model
+        d1 = self._decoder_block(b, e7, 512)
+        d2 = self._decoder_block(d1, e6, 512)
+        d3 = self._decoder_block(d2, e5, 512)
+        d4 = self._decoder_block(d3, e4, 512, dropout=False)
+        d5 = self._decoder_block(d4, e3, 256, dropout=False)
+        d6 = self._decoder_block(d5, e2, 128, dropout=False)
+        d7 = self._decoder_block(d6, e1, 64, dropout=False)
+
+        # output
+        g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
+        out_image = Activation('tanh')(g)
+
+        output = tf.concat([input_src_image, out_image], axis=-1)
+        
+        # define model
+        model = Model(input_src_image, output, name='generator_model')
+
         return model
+
+    def _decoder_block(self, layer_in, skip_in, n_filters, dropout=True):
+        kernel_weights_init = RandomNormal(stddev=0.02)
+        # add upsampling layer
+        g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(layer_in)
+        # add batch normalization
+        g = BatchNormalization()(g, training=True)
+        if dropout:
+            g = Dropout(0.5)(g, training=True)
+        # merge with skip connection
+        g = Concatenate()([g, skip_in])
+        # relu activation
+        g = Activation('relu')(g)
+
+        return g
+
+    def _encoder_block(self, layer_in, n_filters, batchnorm=True):
+        kernel_weights_init = RandomNormal(stddev=0.02)
+        # add downsampling layer
+        g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(layer_in)
+        if batchnorm:
+            g = BatchNormalization()(g, training=True)
+        # leaky relu activation
+        g = LeakyReLU(alpha=0.2)(g)
+
+        return g
 
     def build_discriminator(self):
 
-        inputs = Input(shape=(512, 512, 2))
-        x = conv_module(inputs, channel=64, rate=1, activation='relu')
-        x = MaxPooling2D()(x)
-        x = conv_module(x, channel=128, rate=1, activation='relu')
-        x = MaxPooling2D()(x)
-        x = conv_module(x, channel=256, rate=1, activation='relu')
-        x = MaxPooling2D()(x)
-        x = conv_module(x, channel=512, rate=1, activation='relu')
-        x = MaxPooling2D()(x)
-        x = conv_module(x, channel=512, rate=1, activation='relu')
+        kernel_weights_init = RandomNormal(stddev=0.02)
 
-        x = Flatten()(x)
-        x = Dense(1, activation='sigmoid')(x)
+        src_image_shape = (self.image_size[0], self.image_size[1], 3)
+        
+        input_src_image = Input(shape=src_image_shape)
+        
 
-        model = Model(inputs=inputs, outputs=x, name='discriminator')
+        # concatenate images channel-wise
+        # merged = Concatenate()([input_src_image, input_target_image])
+        merged = input_src_image
+        
+        # C64
+        d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(merged)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C128
+        d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C256
+        d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        # C512
+        d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization()(d)
+        d = LeakyReLU(alpha=0.2)(d)
+        
+        # for patchGAN
+        output = Conv2D(1, (4,4), strides=(1,1), padding='same', kernel_initializer=kernel_weights_init)(d)
+    
+        # define model
+        model = Model(input_src_image, output, name='descriminator_model')
 
         return model
 
-    def train(self, epochs, batch_size=128, sample_interval=50):
+    def demo_prepare(self, path):
+        img = tf.io.read_file(path)
+        img = tf.image.decode_image(img, channels=3)
+        return (img)
+    
+    
+    @tf.function
+    def data_augmentation(self, sample):
+        img = sample['image']
+        # data augmentation
+        
+        if tf.random.uniform([], minval=0, maxval=1) > 0.5:
+            img = tf.image.flip_left_right(img)
+            
+        
+        scale = tf.random.uniform([], 0.5, 1.5)
+        
+        nh = self.image_size[0] * scale
+        nw = self.image_size[1] * scale
 
-        pbar = tqdm(self.train_data, total=self.steps_per_epoch, desc = 'Batch', leave = True, disable=False)
-        for epoch in range(epochs):
-            # for features in tqdm(self.train_data, total=self.steps_per_epoch):
-            for features in pbar:
-            # for features in self.train_data:
-                # ---------------------
-                #  Train Discriminator
-                # ---------------------
-                img = tf.cast(features['image'], tf.uint8)
-                shape = img.shape
-                # Adversarial ground truths
-                valid = np.ones((shape[0], 1))
-                fake = np.zeros((shape[0], 1))
+        img = tf.image.resize(img, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
+        img = tf.image.resize_with_crop_or_pad(img, self.image_size[0], self.image_size[1])
+        
+        img /= 255. # normalize image 0 ~ 1.
+        img = tf.cast(img, tf.float32)
+        
+        lab = tfio.experimental.color.rgb_to_lab(img)
+        # lab = color.rgb2lab(img)
+        
 
-                img = tf.image.resize(img, (512, 512), tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-                # gray_img = tfio.experimental.color.rgb_to_grayscale(img)
+        l_channel = lab[:, :, :1]
+        ab_channel = lab[:, :, 1:]
 
-                # gray_img = tf.image.rgb_to_grayscale(img)
-                #
-                # Gray_3channel = tf.concat([gray_img, gray_img, gray_img], axis=-1)
-                # gray_ycbcr = tfio.experimental.color.rgb_to_ycbcr(Gray_3channel)
-                # gray_Y = gray_ycbcr[:, :, 0]
-                # gray_Y = tf.cast(gray_Y, tf.float32)
-                # gray_Y = (gray_Y / 127.5) - 1.0
-                # gray_Y = tf.expand_dims(gray_Y, axis=-1)
+        # l_channel /= 100. ( 0 ~ 1 scaling )
+        l_channel = (l_channel - 50.) / 50. # ( -1 ~ 1 scaling )
+        ab_channel /= 127.        
+        
+        return (l_channel, ab_channel)
 
-                img_YCbCr = tfio.experimental.color.rgb_to_ycbcr(img)
-                gray_Y = img_YCbCr[:, :, :, 0]
-                gray_Y = tf.cast(gray_Y, tf.float32)
-                gray_Y = (gray_Y / 127.5) - 1.0
-                # gray_Y /= 255.
-                gray_Y = tf.expand_dims(gray_Y, axis=-1)
+    
+    def train(self):
+        EPOCHS = 100
+        BATCH_SIZE = 8
+        INPUT_SHAPE_GEN = (512, 512, 1)
+        
+        patch = int(INPUT_SHAPE_GEN[0] / 2**4)
+        disc_patch = (patch, patch, 1)
 
-                Cb = img_YCbCr[:, :, :, 1]
-                Cb = tf.cast(Cb, tf.float32)
-                Cb = (Cb / 127.5) - 1.0
-                # Cb /= 255.
-                Cb = tf.expand_dims(Cb, axis=-1)
+        SCALE_STEP = [512]
+        DATASET_DIR ='./datasets'
+        CHECKPOINT_DIR = './checkpoints'
+        CURRENT_DATE = str(time.strftime('%m%d', time.localtime(time.time())))
+        WEIGHTS_GEN = CHECKPOINT_DIR + '/' + CURRENT_DATE + '/GEN'
+        WEIGHTS_DIS = CHECKPOINT_DIR + '/' + CURRENT_DATE + '/DIS'
+        WEIGHTS_GAN = CHECKPOINT_DIR + '/' + CURRENT_DATE + '/GAN'
+        DEMO_OUTPUT = './demo_outputs/' + CURRENT_DATE + '/'
+        os.makedirs(DEMO_OUTPUT, exist_ok=True)
+        os.makedirs(WEIGHTS_GEN, exist_ok=True)
+        os.makedirs(WEIGHTS_DIS, exist_ok=True)
+        os.makedirs(WEIGHTS_GAN, exist_ok=True)
 
-                Cr = img_YCbCr[:, :, :, 2]
-                Cr = tf.cast(Cr, tf.float32)
-                Cr = (Cr / 127.5) - 1.0
-                # Cr /= 255.
-                Cr = tf.expand_dims(Cr, axis=-1)
+        celebA_hq = tfds.load('CustomCelebahq',
+                            data_dir=DATASET_DIR, split='train', shuffle_files=True)
 
-                CbCr = tf.concat([Cb, Cr], axis=-1)
-
-
-                # Generate a batch of new images
-
-
-                noise = tf.random.uniform(shape=[batch_size, 512, 512, 1], maxval=1.0)
-                gen_imgs = self.generator.predict(gray_Y)
-
-                # Train the discriminator
-                d_loss_real = self.discriminator.train_on_batch(CbCr, valid)
-                d_loss_fake = self.discriminator.train_on_batch(gen_imgs, fake)
-                d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-                # ---------------------
-                #  Train Generator
-                # ---------------------
-
-                # noise = np.random.normal(0, 1, (batch_size, self.latent_dim))
-
-                # Train the generator (to have the discriminator label samples as valid)
-                noise = tf.random.uniform(shape=[batch_size, 512, 512, 1], maxval=1.0)
-                g_loss = self.combined.train_on_batch(noise, valid)
-
-                # Plot the progress
-                # t.set_description("text", refresh=True)
-
-                # print("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (
-                # epoch, self.d_loss[0], 100 * self.d_loss[1], self.g_loss))
-
-                pbar.set_description("%d [D loss: %f, acc.: %.2f%%] [G loss: %f]" % (
-                epoch, d_loss[0], 100 * d_loss[1], g_loss))
-
-            # self.train_data = self.train_data.repeat()
-
-
-            # If at save interval => save generated image samples
-            if epoch % sample_interval == 0:
-                self.sample_images(epoch)
-
-    def sample_images(self, epoch):
-        # r, c = 5, 5
-        # noise = np.random.normal(0, 1, (r * c, self.latent_dim))
-        # gen_imgs = self.generator.predict(noise)
+        # celebA = tfds.load('CustomCeleba',
+        #                        data_dir=DATASET_DIR, split='train', shuffle_files=True)
         #
-        # # Rescale images 0 - 1
-        # gen_imgs = 0.5 * gen_imgs + 0.5
-        #
-        # fig, axs = plt.subplots(r, c)
-        # cnt = 0
-        # for i in range(r):
-        #     for j in range(c):
-        #         axs[i,j].imshow(gen_imgs[cnt, :,:,0], cmap='gray')
-        #         axs[i,j].axis('off')
-        #         cnt += 1
-        # fig.savefig("images/%d.png" % epoch)
-        # plt.close()
-        self.combined.save_weights('test_model.h5')
-        # self.combined.s
+        # train_data = celebA_hq.concatenate(celebA)
+        train_data = celebA_hq
 
+        number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
+        print("학습 데이터 개수", number_train)
+        steps_per_epoch = number_train // BATCH_SIZE
+        train_data = train_data.shuffle(1024)
+        train_data = train_data.map(self.data_augmentation)
+        train_data = train_data.padded_batch(BATCH_SIZE)
+        train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
+
+        # prepare validation dataset
+        filenames = os.listdir('./demo_images')
+        filenames.sort()
+        demo_imgs = tf.data.Dataset.list_files('./demo_images/' + '*', shuffle=False)
+        demo_test = demo_imgs.map(self.demo_prepare)
+        demo_test = demo_test.batch(1)
+        demo_steps = len(filenames) // 1
+
+
+
+        for steps in range(len(SCALE_STEP)):
+            IMAGE_SHAPE = (SCALE_STEP[steps], SCALE_STEP[steps])
+
+            fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
+            real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
+            # fake_y_dis = tf.zeros((BATCH_SIZE, 1))
+            # real_y_dis = tf.ones((BATCH_SIZE, 1))
+            # real_y_dis = tf.random.uniform(shape=[(BATCH_SIZE,) + disc_patch], minval=0.9, maxval=1)
+
+            for epoch in range(EPOCHS):
+                pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
+                batch_counter = 0
+                
+                dis_res = 0
+                index = 0
+
+                for l_channel, ab_channel in pbar:
+                    batch_counter += 1
+                    # ---------------------
+                    #  Train Discriminator
+                    # ---------------------
+                    # img = tf.cast(features['image'], tf.float32)
+                    
+                    original_lab = tf.concat([l_channel, ab_channel], axis=-1)
+                    pred_lab = self.gen_model.predict(l_channel)
+                    
+                    d_real = self.d_model.train_on_batch(original_lab, real_y_dis)
+                    d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
+                    dis_res = 0.5 * tf.add(d_fake, d_real)
+
+                    gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, original_lab])
+                    
+                    
+                    pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
+                                             dis_res[0],
+                                             dis_res[1],
+                                             gan_res[0],
+                                              gan_res[1],
+                                              gan_res[2],
+                                              gan_res[3] * 100))
+                    
+                # if epoch % 5 == 0:
+                self.gen_model.save_weights(WEIGHTS_GEN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+                self.d_model.save_weights(WEIGHTS_DIS + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+                self.gan_model.save_weights(WEIGHTS_GAN + str(SCALE_STEP[steps]) + '_'+ str(epoch) + '.h5', overwrite=True)
+
+                os.makedirs(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch), exist_ok=True)
+
+                # validation
+                for img in demo_test:
+                    img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
+                    
+                    img /= 255. # normalize image 0 ~ 1.
+                    img = tf.cast(img, tf.float32)
+                    
+                    lab = tfio.experimental.color.rgb_to_lab(img)
+                    
+                    l_channel = lab[:, :, :, 0]
+                    l_channel = (l_channel - 50.) / 50. # ( -1 ~ 1 scaling )
+                    l_channel = tf.expand_dims(l_channel, axis=-1)
+                    
+                    pred_lab = self.gen_model.predict(l_channel)
+
+                    for i in range(len(pred_lab)):
+                        batch_lab = pred_lab[i]
+                        
+                        batch_l = batch_lab[:, :, 0]
+                        batch_a = batch_lab[:, :, 1]
+                        batch_b = batch_lab[:, :, 2]
+                        
+                        batch_l = tf.expand_dims(batch_l, axis=-1)
+                        batch_a = tf.expand_dims(batch_a, axis=-1)
+                        batch_b = tf.expand_dims(batch_b, axis=-1)
+                        
+                        batch_l = (batch_l * 50) + 50.
+                        batch_a *= 127.
+                        batch_b *= 127.
+                        
+                        batch_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
+
+                        rgb = tfio.experimental.color.lab_to_rgb(batch_lab)
+                        
+
+                        plt.imshow(rgb)
+
+                        plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
+                        index +=1
 
 if __name__ == '__main__':
-    # mirrored_strategy = tf.distribute.MirroredStrategy()
-    # with mirrored_strategy.scope():
-    gan = GAN()
-    gan.train(epochs=EPOCHS, batch_size=BATCH_SIZE, sample_interval=1)
+    gan = Pix2Pix()
+    gan.train()

@@ -58,47 +58,35 @@ if __name__ == "__main__":
         img /= 255. # normalize image 0 ~ 1.
         img = tf.cast(img, tf.float32)
         
-        lab = color.rgb2lab(img)
-        
-        
+        lab = tfio.experimental.color.rgb_to_lab(img)
         
         
         l_channel = lab[:, :, :, :1]
-        a_channel = lab[:, :, :, 1]
-        b_channel = lab[:, :, :, 2]
-        
-        print('L max :', np.max(l_channel), 'L min :', np.min(l_channel))
-        print('a max :', np.max(a_channel), 'a_min :', np.min(a_channel))
-        print('b max :', np.max(b_channel), 'b_min :', np.min(b_channel))
         ab_channel = lab[:, :, :, 1:]
 
         l_channel = (l_channel - 50) / 50.
+        l_channel = (l_channel * 50) + 50.
         ab_channel /= 127.
+        ab_channel *= 127.
         
         
         norm_lab = tf.concat([l_channel , ab_channel], axis=-1)
-        norm_lab_2 = norm_lab
+
+        norm_lab = tfio.experimental.color.lab_to_rgb(norm_lab)
+           
         
-        ssim_loss = tf.image.ssim(norm_lab, norm_lab_2, max_val=2.0)
-        ms_ssim_loss = tf.image.ssim_multiscale(norm_lab, norm_lab_2, max_val=2.0)
-        
-        
-        ssim_loss = tf.reduce_mean((1-ms_ssim_loss), axis=0)        
-        print(ssim_loss)
-            
-        rgb = color.lab2rgb(lab)
 
         img = tf.cast(img, tf.float32) # if use ycbcr
         for i in range(batch_size):
             
             NORM_RGB = (img[i] / 127.5) - 1
-            norm_lab = lab [i]
+            norm_lab = norm_lab[i]
             R = norm_lab[:, :, 0]
             G = norm_lab[:, :, 1]
             B = norm_lab[:, :, 2]
 
             rows = 1
-            cols = 3
+            cols = 4
             fig = plt.figure()
 
             ax0 = fig.add_subplot(rows, cols, 1)
@@ -115,6 +103,13 @@ if __name__ == "__main__":
             ax0.imshow(B)
             ax0.set_title('b channel')
             ax0.axis("off")
+            
+            ax0 = fig.add_subplot(rows, cols, 4)
+            ax0.imshow(norm_lab)
+            ax0.set_title('RGB channel')
+            ax0.axis("off")
+            
+            
 
             # ax0 = fig.add_subplot(rows, cols, 4)
             # ax0.imshow(B)

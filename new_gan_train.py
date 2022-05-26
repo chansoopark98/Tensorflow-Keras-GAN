@@ -190,6 +190,7 @@ class Pix2Pix():
         img = tf.io.read_file(path)
         img = tf.image.decode_image(img, channels=3)
         return (img)
+        
     
     def train(self):
         EPOCHS = 30

@@ -1,4 +1,3 @@
-from re import A
 import tensorflow as tf
 import os
 from tensorflow.keras.layers import Input, concatenate
@@ -26,8 +25,8 @@ import numpy as np
 class Pix2Pix():
     def __init__(self):
         # Input shape
-        self.img_rows = 512
-        self.img_cols = 512
+        self.img_rows = 1024
+        self.img_cols = 1024
         self.image_size = (self.img_rows, self.img_cols)
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
@@ -52,11 +51,14 @@ class Pix2Pix():
     
         self.d_model.trainable = False
         
-        input_src_image = Input(shape=(512, 512, 1)) # Input = L channel input
+        input_src_image = Input(shape=(self.image_size[0], self.image_size[1], 1)) # Input = L channel input
         gen_out = self.gen_model(input_src_image) # return ab channel
-
+        
+        # (B, H, W, 3)
+        generate_rgb = tf.concat([input_src_image, gen_out], axis=-1)
+        
         # connect the source input and generator output to the discriminator input
-        dis_out = self.d_model(gen_out) #  L, ab channel
+        dis_out = self.d_model(generate_rgb) #  L, ab channel
 
         # src image as input, generated image and real/fake classification as output
         self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
@@ -74,7 +76,7 @@ class Pix2Pix():
         alpha = 0.84
         
         # Calculate mae Loss
-        mae_loss = tf.reduce_mean(mean_absolute_error(y_true=y_true, y_pred=y_pred))
+        mae_loss = mean_absolute_error(y_true=y_true, y_pred=y_pred)
         # mae_loss = (1- alpha) * mae_loss
         
         # # Calculate multi scale ssim loss
@@ -107,7 +109,6 @@ class Pix2Pix():
         return mae_loss        
         
         
-    
     def build_generator(self):
         gen_input_shape=(self.image_size[0], self.image_size[1], 1)
 
@@ -139,11 +140,9 @@ class Pix2Pix():
         # output
         g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
         out_image = Activation('tanh')(g)
-
-        output = tf.concat([input_src_image, out_image], axis=-1)
         
         # define model
-        model = Model(input_src_image, output, name='generator_model')
+        model = Model(input_src_image, out_image, name='generator_model')
 
         return model
 
@@ -174,14 +173,10 @@ class Pix2Pix():
         return g
 
     def build_discriminator(self):
-
         kernel_weights_init = RandomNormal(stddev=0.02)
-
         src_image_shape = (self.image_size[0], self.image_size[1], 3)
-        
         input_src_image = Input(shape=src_image_shape)
         
-
         # concatenate images channel-wise
         # merged = Concatenate()([input_src_image, input_target_image])
         merged = input_src_image
@@ -207,13 +202,75 @@ class Pix2Pix():
     
         # define model
         model = Model(input_src_image, output, name='descriminator_model')
-
         return model
 
     def demo_prepare(self, path):
         img = tf.io.read_file(path)
         img = tf.image.decode_image(img, channels=3)
         return (img)
+    
+    
+    def rgb_to_lab(self, rgb):
+        """
+        Convert to rgb image to lab image
+
+        Args:
+            rgb (Tensor): (H, W, 3)
+
+        Returns:
+            Normalized lab image
+            {
+                Value Range
+                L : -1 ~ 1
+                ab : -1 ~ 1
+            }
+            L, ab (Tensor): (H, W, 1), (H, W, 2)
+        """
+        # normalize image 0 ~ 1.
+        rgb /= 255. 
+        
+        # Convert to float32 data type.
+        rgb = tf.cast(rgb, tf.float32)
+        
+        # Convert to rgb to lab
+        lab = tfio.experimental.color.rgb_to_lab(rgb)
+
+        l_channel = lab[:, :, :1]
+        ab_channel = lab[:, :, 1:]
+
+        # -1 ~ 1 scaling
+        l_channel = (l_channel - 50.) / 50. 
+        ab_channel /= 127.        
+        
+        return (l_channel, ab_channel)
+    
+    
+    def lab_to_rgb(self, lab):
+        """
+        Convert to lab image to rgb image
+
+        Args:
+            lab (Tensor, float32): (H, W, 3)
+
+        Returns:
+            {
+                Normalized lab image
+                Value Range : 0 ~ 1
+            }
+            RGB (Tensor, float32) :(H, W, 3)
+        """      
+        batch_l = lab[:, :, :1]
+        batch_ab = lab[:, :, 1:]
+
+        
+        batch_l = (batch_l * 50) + 50.
+        batch_ab *= 127.
+        
+        batch_lab = tf.concat([batch_l, batch_ab], axis=-1)
+
+        rgb = tfio.experimental.color.lab_to_rgb(batch_lab)
+        
+        return rgb
     
     
     @tf.function
@@ -233,32 +290,20 @@ class Pix2Pix():
         img = tf.image.resize(img, (nh, nw), method=tf.image.ResizeMethod.BILINEAR)
         img = tf.image.resize_with_crop_or_pad(img, self.image_size[0], self.image_size[1])
         
-        img /= 255. # normalize image 0 ~ 1.
-        img = tf.cast(img, tf.float32)
-        
-        lab = tfio.experimental.color.rgb_to_lab(img)
-        # lab = color.rgb2lab(img)
-        
-
-        l_channel = lab[:, :, :1]
-        ab_channel = lab[:, :, 1:]
-
-        # l_channel /= 100. ( 0 ~ 1 scaling )
-        l_channel = (l_channel - 50.) / 50. # ( -1 ~ 1 scaling )
-        ab_channel /= 127.        
+        l_channel, ab_channel = self.rgb_to_lab(rgb=img)
         
         return (l_channel, ab_channel)
 
     
     def train(self):
         EPOCHS = 100
-        BATCH_SIZE = 8
-        INPUT_SHAPE_GEN = (512, 512, 1)
+        BATCH_SIZE = 4
+        INPUT_SHAPE_GEN = (self.image_size[0], self.image_size[1], 1)
         
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
         disc_patch = (patch, patch, 1)
 
-        SCALE_STEP = [512]
+        SCALE_STEP = [1024]
         DATASET_DIR ='./datasets'
         CHECKPOINT_DIR = './checkpoints'
         CURRENT_DATE = str(time.strftime('%m%d', time.localtime(time.time())))
@@ -303,9 +348,6 @@ class Pix2Pix():
 
             fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
             real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
-            # fake_y_dis = tf.zeros((BATCH_SIZE, 1))
-            # real_y_dis = tf.ones((BATCH_SIZE, 1))
-            # real_y_dis = tf.random.uniform(shape=[(BATCH_SIZE,) + disc_patch], minval=0.9, maxval=1)
 
             for epoch in range(EPOCHS):
                 pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
@@ -322,13 +364,16 @@ class Pix2Pix():
                     # img = tf.cast(features['image'], tf.float32)
                     
                     original_lab = tf.concat([l_channel, ab_channel], axis=-1)
-                    pred_lab = self.gen_model.predict(l_channel)
+                    
+                    pred_ab = self.gen_model.predict(l_channel)
+                    
+                    pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
                     
                     d_real = self.d_model.train_on_batch(original_lab, real_y_dis)
                     d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
                     dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                    gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, original_lab])
+                    gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
                     
                     
                     pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
@@ -348,44 +393,27 @@ class Pix2Pix():
 
                 # validation
                 for img in demo_test:
-                    img = tf.image.resize(img, (IMAGE_SHAPE[0], IMAGE_SHAPE[1]), tf.image.ResizeMethod.BILINEAR)
+                    img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
                     
-                    img /= 255. # normalize image 0 ~ 1.
-                    img = tf.cast(img, tf.float32)
+                    l_channel, _ = self.rgb_to_lab(rgb=img[0])
                     
-                    lab = tfio.experimental.color.rgb_to_lab(img)
+                    l_channel = tf.expand_dims(l_channel, axis=0)
                     
-                    l_channel = lab[:, :, :, 0]
-                    l_channel = (l_channel - 50.) / 50. # ( -1 ~ 1 scaling )
-                    l_channel = tf.expand_dims(l_channel, axis=-1)
+                    pred_ab = self.gen_model.predict(l_channel)
                     
-                    pred_lab = self.gen_model.predict(l_channel)
+                    pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
 
                     for i in range(len(pred_lab)):
-                        batch_lab = pred_lab[i]
                         
-                        batch_l = batch_lab[:, :, 0]
-                        batch_a = batch_lab[:, :, 1]
-                        batch_b = batch_lab[:, :, 2]
+                        rgb = self.lab_to_rgb(lab=pred_lab[i])
                         
-                        batch_l = tf.expand_dims(batch_l, axis=-1)
-                        batch_a = tf.expand_dims(batch_a, axis=-1)
-                        batch_b = tf.expand_dims(batch_b, axis=-1)
-                        
-                        batch_l = (batch_l * 50) + 50.
-                        batch_a *= 127.
-                        batch_b *= 127.
-                        
-                        batch_lab = tf.concat([batch_l, batch_a, batch_b], axis=-1)
 
-                        rgb = tfio.experimental.color.lab_to_rgb(batch_lab)
-                        
+                        rgb = tfio.experimental.color.lab_to_rgb(rgb)
 
                         plt.imshow(rgb)
 
                         plt.savefig(DEMO_OUTPUT + str(SCALE_STEP[steps]) + '/'+ str(epoch) + '/'+ str(index)+'.png', dpi=200)
                         index +=1
-
 if __name__ == '__main__':
     gan = Pix2Pix()
     gan.train()

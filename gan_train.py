@@ -1,34 +1,29 @@
-from re import T
-from xmlrpc.client import TRANSPORT_ERROR
 import tensorflow as tf
 import os
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.layers import (
     UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout, concatenate,
     DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose, GlobalAveragePooling2D)
-
+from model.ResUnet import ResUNet
+from model.Unet import Unet
 from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
-from tensorflow.keras.activations import tanh, relu
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError, MeanSquaredError, BinaryCrossentropy
+from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError, MeanSquaredError, BinaryCrossentropy, mean_squared_error
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
 import tensorflow.keras.backend as K
-from torch import batch_norm
 from tqdm import tqdm
+import time
 import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import tensorflow_io as tfio
-from skimage import color
-import time
-import numpy as np
 # LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal 
 
 
 class Pix2Pix():
     def __init__(self):
         # Set model prefix name
-        self.prefix = 'BCE_RGB_Dis'
+        self.prefix = 'new_trick_sgd'
         
         # Input shape
         self.img_rows = 512
@@ -47,9 +42,10 @@ class Pix2Pix():
 
         opt = Adam(lr=0.0002, beta_1=0.5)
 
+
         # Build discriminator
         self.d_model = self.build_discriminator()
-        self.d_model.compile(loss='mse', optimizer=opt, metrics=['accuracy'])
+        self.d_model.compile(loss=self.discriminator_loss, optimizer=opt, metrics=['accuracy'])
 
         
         # Build generator
@@ -69,7 +65,7 @@ class Pix2Pix():
         # src image as input, generated image and real/fake classification as output
         self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
         
-        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 100])
+        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 1])
         self.gan_model.summary()
 
     def generator_loss(self, y_true, y_pred):
@@ -86,82 +82,22 @@ class Pix2Pix():
     
     def discriminator_loss(self, y_true, y_pred):
         # Calculate bce Loss
-        bce_loss = tf.reduce_mean(binary_crossentropy(y_true=y_true, y_pred=y_pred, from_logits=True))
+        # bce_loss = tf.reduce_mean(binary_crossentropy(y_true=y_true, y_pred=y_pred, from_logits=True))
         
-        return bce_loss
+        # Calculate mse loss
+        mse_loss = mean_squared_error(y_true=y_true, y_pred=y_pred)
+        
+        return mse_loss
         
     def build_generator(self):
-        gen_input_shape=(self.image_size[0], self.image_size[1], 1)
-
-        kernel_weights_init = RandomNormal(stddev=0.02)
-        input_src_image = Input(shape=gen_input_shape)
-
-        # encoder model
-        e1 = self._encoder_block(input_src_image, 64, batchnorm=False)
-        e2 = self._encoder_block(e1, 128)
-        e3 = self._encoder_block(e2, 256)
-        e4 = self._encoder_block(e3, 512)
-        e5 = self._encoder_block(e4, 512)
-        e6 = self._encoder_block(e5, 512)
-        e7 = self._encoder_block(e6, 512)
-
-        # bottleneck, no batch norm and relu
-        b = Conv2D(512, (4,4), strides=(2,2), padding='same', use_bias=True, kernel_initializer=kernel_weights_init)(e7)
-        b = Activation('relu')(b)
-
-        # decoder model
-        d1 = self._decoder_block(b, e7, 512)
-        d2 = self._decoder_block(d1, e6, 512)
-        d3 = self._decoder_block(d2, e5, 512)
-        d4 = self._decoder_block(d3, e4, 512, dropout=False)
-        d5 = self._decoder_block(d4, e3, 256, dropout=False)
-        d6 = self._decoder_block(d5, e2, 128, dropout=False)
-        d7 = self._decoder_block(d6, e1, 64, dropout=False)
-
-        # output
-        g = UpSampling2D()(d7)
-        g = Conv2D(filters=2, kernel_size=4, strides=1, padding='same', kernel_initializer=kernel_weights_init)(g)
+        unet = Unet(image_size=(self.image_size))
+        model = unet.build_generator()
         
-        # g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
-    
-        out_image = Activation('tanh')(g)
+        # resUnet = ResUNet(image_size=(self.image_size))
+        # model = resUnet.res_u_net_generator()
         
-        # define model
-        model = Model(input_src_image, out_image, name='generator_model')
-
         return model
 
-    def _decoder_block(self, layer_in, skip_in, n_filters, dropout=True):
-        kernel_weights_init = RandomNormal(stddev=0.02)
-        # add upsampling layer
-        g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', use_bias=False, kernel_initializer=kernel_weights_init)(layer_in)
-        # add batch normalization
-        g = BatchNormalization(momentum=0.8)(g, training=True)
-        if dropout:
-            g = Dropout(0.5)(g, training=True)
-        # merge with skip connection
-        g = Concatenate()([g, skip_in])
-        # relu activation
-        g = Activation('relu')(g)
-
-        return g
-
-    def _encoder_block(self, layer_in, n_filters, batchnorm=True):
-        kernel_weights_init = RandomNormal(stddev=0.02)
-        
-        if batch_norm == True:
-            use_bias = False
-        else:
-            use_bias = True
-        
-        # add downsampling layer
-        g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', use_bias=use_bias, kernel_initializer=kernel_weights_init)(layer_in)
-        if batchnorm:
-            g = BatchNormalization(momentum=0.8)(g, training=True)
-        # leaky relu activation
-        g = LeakyReLU(alpha=0.2)(g)
-
-        return g
 
     def build_discriminator(self):
         kernel_weights_init = RandomNormal(stddev=0.02)
@@ -192,7 +128,7 @@ class Pix2Pix():
         output = Conv2D(1, (4,4), strides=(1,1), padding='same', use_bias=True, kernel_initializer=kernel_weights_init)(d)
     
         # define model
-        model = Model(input_src_image, output, name='descriminator_model')
+        model = Model(input_src_image, output, name='discriminator_model')
         return model
 
     def demo_prepare(self, path):
@@ -238,7 +174,7 @@ class Pix2Pix():
         
         # -1 ~ 1 scaling
         l_channel = (l_channel - 50.) / 50. 
-        ab_channel /= 127.       
+        ab_channel /= 128.       
         
         return l_channel, ab_channel
     
@@ -268,8 +204,8 @@ class Pix2Pix():
 
         
         batch_l = (batch_l * 50) + 50.
-        batch_a *= 127.
-        batch_b *= 127.
+        batch_a *= 128.
+        batch_b *= 128.
         
         batch_l = tf.expand_dims(batch_l, axis=-1)
         batch_a = tf.expand_dims(batch_a, axis=-1)
@@ -301,7 +237,7 @@ class Pix2Pix():
         
         l_channel, ab_channel = self.rgb_to_lab(rgb=img)
         
-        norm_rgb = (img / 127.5) - 1
+        norm_rgb = (img / 128) - 1
         
         return (l_channel, ab_channel, norm_rgb)
 
@@ -344,14 +280,12 @@ class Pix2Pix():
         demo_test = demo_test.batch(1)
         demo_steps = len(filenames) // 1
 
-        fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
-        real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
-
+        d_real = [0, 0]
         for epoch in range(EPOCHS):
             pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
             batch_counter = 0
             
-            dis_res = 0
+            d_fake = 0
             index = 0
 
             for l_channel, ab_channel, norm_rgb in pbar:
@@ -360,29 +294,42 @@ class Pix2Pix():
                 #  Train Discriminator
                 # ---------------------
                 # img = tf.cast(features['image'], tf.float32)
-                
                 original_lab = tf.concat([l_channel, ab_channel], axis=-1)
                 
                 pred_ab = self.gen_model.predict(l_channel)
                 
                 pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
 
-            
-                d_real = self.d_model.train_on_batch(original_lab, real_y_dis)
-                d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
-                dis_res = 0.5 * tf.add(d_fake, d_real)
-
-                # Freeze the discriminator
-                self.d_model.trainable = False
-        
-                gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
-                
                 # Unfreeze the discriminator
                 self.d_model.trainable = True
                 
-                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
-                                            dis_res[0],
-                                            dis_res[1],
+                fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
+                real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
+        
+                if tf.random.uniform([]) > 0.5:
+                    real_factor = tf.random.uniform([], minval=0.7, maxval=1.2)
+                    real_y_dis *= real_factor
+                
+                
+                
+                
+                d_real = self.d_model.train_on_batch(original_lab, real_y_dis)
+                
+                if d_real[1] <= 0.5:
+                    d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
+                
+                # dis_res = 0.5 * tf.add(d_fake, d_real)
+
+                # Freeze the discriminator
+                self.d_model.trainable = False
+                    
+                gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
+                
+                pbar.set_description("Epoch : %d Fake Dis loss: %f, Fake Dis ACC: %f, Real Dis loss: %f, Real Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
+                                            d_fake[0],
+                                            d_fake[1],
+                                            d_real[0],
+                                            d_real[1],
                                             gan_res[0],
                                             gan_res[1],
                                             gan_res[2],

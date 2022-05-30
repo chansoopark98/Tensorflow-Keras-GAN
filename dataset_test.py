@@ -1,4 +1,3 @@
-from re import T
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from utils.datasets import Dataset
@@ -16,7 +15,7 @@ args = parser.parse_args()
 
 DATASET_DIR = args.dataset_dir
 IMAGE_SIZE = (512, 512)
-
+ 
 def demo_prepare(path):
     img = tf.io.read_file(path)
     img = tf.image.decode_image(img, channels=3)
@@ -24,17 +23,17 @@ def demo_prepare(path):
 # train_data = train_dataset_config.get_trainData(train_dataset_config.train_data)
 
 if __name__ == "__main__":
-    batch_size = 1
+    batch_size = 8
     demo = False
     celebA_hq = tfds.load('CustomCelebahq',
-                           data_dir=DATASET_DIR, split='train', shuffle_files=True)
+                           data_dir=DATASET_DIR, split='train')
 
     # celebA = tfds.load('CustomCeleba',
     #                        data_dir=DATASET_DIR, split='train', shuffle_files=True)
     #
     # train_data = celebA_hq.concatenate(celebA)
     train_data = celebA_hq
-    train_data = train_data.padded_batch(1)
+    train_data = train_data.padded_batch(batch_size)
     train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
 
@@ -51,7 +50,7 @@ if __name__ == "__main__":
         if demo is False:
             batch = batch['image']
 
-        img = tf.image.resize(batch, (512, 512))
+        img = tf.image.resize(batch, (512, 512))        
         
         original = img
         
@@ -59,54 +58,34 @@ if __name__ == "__main__":
         img = tf.cast(img, tf.float32)
         
         lab = tfio.experimental.color.rgb_to_lab(img)
+        ski_lab = color.rgb2lab(img)
         
-        
-        l_channel = lab[:, :, :, :1]
-        ab_channel = lab[:, :, :, 1:]
+        print(ski_lab - lab)
 
-        l_channel = (l_channel - 50) / 50.
-        l_channel = (l_channel * 50) + 50.
-        ab_channel /= 127.
-        ab_channel *= 127.
         
-        
-        norm_lab = tf.concat([l_channel , ab_channel], axis=-1)
-
-        norm_lab = tfio.experimental.color.lab_to_rgb(norm_lab)
-           
-        
-
-        img = tf.cast(img, tf.float32) # if use ycbcr
-        for i in range(batch_size):
+        for i in range(batch_size):    
             
-            NORM_RGB = (img[i] / 127.5) - 1
-            norm_lab = norm_lab[i]
-            R = norm_lab[:, :, 0]
-            G = norm_lab[:, :, 1]
-            B = norm_lab[:, :, 2]
-
+            l_channel = lab[i, :, :, 0]
+            a_channel = lab[i, :, :, 1]
+            b_channel = lab[i, :, :, 2]
+        
             rows = 1
-            cols = 4
+            cols = 3
             fig = plt.figure()
 
             ax0 = fig.add_subplot(rows, cols, 1)
-            ax0.imshow(R)
+            ax0.imshow(l_channel)
             ax0.set_title('L channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 2)
-            ax0.imshow(G)
+            ax0.imshow(a_channel)
             ax0.set_title('a channel')
             ax0.axis("off")
 
             ax0 = fig.add_subplot(rows, cols, 3)
-            ax0.imshow(B)
+            ax0.imshow(b_channel)
             ax0.set_title('b channel')
-            ax0.axis("off")
-            
-            ax0 = fig.add_subplot(rows, cols, 4)
-            ax0.imshow(norm_lab)
-            ax0.set_title('RGB channel')
             ax0.axis("off")
             
             
@@ -116,7 +95,6 @@ if __name__ == "__main__":
             # ax0.set_title('B channel')
             # ax0.axis("off")
 
-            plt.savefig('lab.png', dpi=500)
             plt.show()
             
 

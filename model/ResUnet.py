@@ -86,9 +86,38 @@ class ResUNet():
         model = Model(e0, outputs)
         
         return model
-        
+    
+    
+    def res_discriminator(self):
 
-            
+        input_shape=(self.image_size[0], self.image_size[1], 3)
+
+        
+        input = Input(shape=input_shape)
+        
+        # 256
+        d = Conv2D(32, (4,4), strides=(2,2), padding='same', use_bias=True, kernel_initializer=self.kernel_weights_init)(input)
+        d = LeakyReLU(alpha=0.2)(d)
+        
+        # 128
+        d = self.residual_block(x=d, filters=64, strides=2)
+        
+        # 64
+        d = self.residual_block(x=d, filters=128, strides=2)
+        
+        # 32
+        d = self.residual_block(x=d, filters=256, strides=2)
+        
+        # 32
+        d = self.residual_block(x=d, filters=512, strides=1)
+        
+        # for patchGAN
+        output = Conv2D(1, (4,4), strides=(1,1), padding='same', use_bias=True, kernel_initializer=self.kernel_weights_init)(d)
+    
+        # define model
+        model = Model(input, output, name='discriminator_model')
+        
+        return model
         
         
             

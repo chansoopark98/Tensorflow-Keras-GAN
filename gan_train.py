@@ -23,7 +23,7 @@ import tensorflow_io as tfio
 class Pix2Pix():
     def __init__(self):
         # Set model prefix name
-        self.prefix = 'new_trick_sgd'
+        self.prefix = 'test'
         
         # Input shape
         self.img_rows = 512
@@ -32,6 +32,10 @@ class Pix2Pix():
         self.channels = 3
         self.img_shape = (self.img_rows, self.img_cols, self.channels)
 
+        # Set mixed precision
+        # self.policy = mixed_precision.Policy('mixed_float16', loss_scale=1024)
+        # mixed_precision.set_policy(self.policy)
+        
         # Calculate output shape of D (PatchGAN)
         patch = int(self.img_rows / 2**4)
         self.disc_patch = (patch, patch, 1)
@@ -41,7 +45,7 @@ class Pix2Pix():
         self.df = 64
 
         opt = Adam(lr=0.0002, beta_1=0.5)
-
+        # opt = mixed_precision.LossScaleOptimizer(opt, loss_scale='dynamic')
 
         # Build discriminator
         self.d_model = self.build_discriminator()
@@ -65,7 +69,7 @@ class Pix2Pix():
         # src image as input, generated image and real/fake classification as output
         self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
         
-        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 1])
+        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 10])
         self.gan_model.summary()
 
     def generator_loss(self, y_true, y_pred):
@@ -74,11 +78,19 @@ class Pix2Pix():
         Args:
             y_true (Tensor, float32 (B,H,W,2)): gt
             y_pred (Tensor, float32 ((B,H,W,2)): dl model prediction
-        """    
+        """
         # Calculate mae Loss
         mae_loss = mean_absolute_error(y_true=y_true, y_pred=y_pred)
+        ssim_loss = 1 - tf.image.ssim_multiscale(y_true, y_pred, max_val=2.0)
         
-        return mae_loss        
+        alpha = 0.84
+        
+        scaled_mae = (1 - alpha) * mae_loss
+        scaled_ssim = alpha * ssim_loss
+        
+        total_loss = scaled_mae + scaled_ssim
+        
+        return total_loss
     
     def discriminator_loss(self, y_true, y_pred):
         # Calculate bce Loss
@@ -240,6 +252,20 @@ class Pix2Pix():
         norm_rgb = (img / 128) - 1
         
         return (l_channel, ab_channel, norm_rgb)
+    
+
+    @tf.function
+    def predict_data_prepare(self, sample):
+        img = sample['image']
+        
+        
+        img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), method=tf.image.ResizeMethod.BILINEAR)
+        
+        l_channel, ab_channel = self.rgb_to_lab(rgb=img)
+        
+        norm_rgb = (img / 128) - 1
+        
+        return (l_channel, ab_channel, norm_rgb)
 
     
     def train(self):
@@ -283,13 +309,11 @@ class Pix2Pix():
         d_real = [0, 0]
         for epoch in range(EPOCHS):
             pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
-            batch_counter = 0
             
-            d_fake = 0
             index = 0
 
-            for l_channel, ab_channel, norm_rgb in pbar:
-                batch_counter += 1
+            for l_channel, ab_channel, _ in pbar:
+                
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
@@ -306,30 +330,24 @@ class Pix2Pix():
                 fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
                 real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
         
-                if tf.random.uniform([]) > 0.5:
-                    real_factor = tf.random.uniform([], minval=0.7, maxval=1.2)
+                if tf.random.uniform([]) < 0.05:
+                    real_factor = tf.random.uniform([], minval=0.8, maxval=1.)
                     real_y_dis *= real_factor
-                
-                
-                
+                    
                 
                 d_real = self.d_model.train_on_batch(original_lab, real_y_dis)
+                d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
                 
-                if d_real[1] <= 0.5:
-                    d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
-                
-                # dis_res = 0.5 * tf.add(d_fake, d_real)
+                dis_res = 0.5 * tf.add(d_fake, d_real)
 
                 # Freeze the discriminator
                 self.d_model.trainable = False
                     
                 gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
                 
-                pbar.set_description("Epoch : %d Fake Dis loss: %f, Fake Dis ACC: %f, Real Dis loss: %f, Real Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
-                                            d_fake[0],
-                                            d_fake[1],
-                                            d_real[0],
-                                            d_real[1],
+                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
+                                            dis_res[0],
+                                            dis_res[1],
                                             gan_res[0],
                                             gan_res[1],
                                             gan_res[2],

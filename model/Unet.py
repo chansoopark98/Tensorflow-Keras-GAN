@@ -35,10 +35,10 @@ class Unet():
         d7 = self._decoder_block(d6, e1, 64, dropout=False)
 
         # output
-        g = UpSampling2D()(d7)
-        g = Conv2D(filters=2, kernel_size=4, strides=1, padding='same', kernel_initializer=self.kernel_weights_init)(g)
+        # g = UpSampling2D()(d7)
+        # g = Conv2D(filters=2, kernel_size=4, strides=1, padding='same', kernel_initializer=self.kernel_weights_init)(g)
         
-        # g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=kernel_weights_init)(d7)
+        g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=self.kernel_weights_init)(d7)
     
         out_image = Activation('tanh')(g)
         

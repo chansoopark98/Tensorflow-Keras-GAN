@@ -18,7 +18,7 @@ import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import tensorflow_io as tfio
 # LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal 
-
+# LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4.5.9" python gan_train.py
 
 class Pix2Pix():
     def __init__(self):

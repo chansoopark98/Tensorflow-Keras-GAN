@@ -23,7 +23,7 @@ import tensorflow_io as tfio
 class Pix2Pix():
     def __init__(self):
         # Set model prefix name
-        self.prefix = 'test'
+        self.prefix = 'Final'
         
         # Input shape
         self.img_rows = 512
@@ -69,7 +69,7 @@ class Pix2Pix():
         # src image as input, generated image and real/fake classification as output
         self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
         
-        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 10])
+        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 100])
         self.gan_model.summary()
 
     def generator_loss(self, y_true, y_pred):
@@ -81,25 +81,28 @@ class Pix2Pix():
         """
         # Calculate mae Loss
         mae_loss = mean_absolute_error(y_true=y_true, y_pred=y_pred)
-        ssim_loss = 1 - tf.image.ssim_multiscale(y_true, y_pred, max_val=2.0)
+        # a_ssim_loss = 1 - tf.reduce_mean(tf.image.ssim(y_true[:, :, :, 1:], y_pred[:, :, :, 1:], max_val=2.0))
+        # b_ssim_loss = 1 - tf.reduce_mean(tf.image.ssim(y_true[:, :, :, :1], y_pred[:, :, :, :1], max_val=2.0))
         
-        alpha = 0.84
+        # ssim_loss = 0.5 * (a_ssim_loss + b_ssim_loss)
         
-        scaled_mae = (1 - alpha) * mae_loss
-        scaled_ssim = alpha * ssim_loss
+        # alpha = 0.84
         
-        total_loss = scaled_mae + scaled_ssim
+        # scaled_mae = (1 - alpha) * mae_loss
+        # scaled_ssim = alpha * ssim_loss
         
-        return total_loss
+        # total_loss = scaled_mae + scaled_ssim
+        
+        return mae_loss
     
     def discriminator_loss(self, y_true, y_pred):
         # Calculate bce Loss
-        # bce_loss = tf.reduce_mean(binary_crossentropy(y_true=y_true, y_pred=y_pred, from_logits=True))
+        dis_loss = tf.reduce_mean(binary_crossentropy(y_true=y_true, y_pred=y_pred, from_logits=True))
         
         # Calculate mse loss
-        mse_loss = mean_squared_error(y_true=y_true, y_pred=y_pred)
+        # dis_loss = mean_squared_error(y_true=y_true, y_pred=y_pred)
         
-        return mse_loss
+        return dis_loss
         
     def build_generator(self):
         unet = Unet(image_size=(self.image_size))

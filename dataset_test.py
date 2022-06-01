@@ -45,7 +45,8 @@ if __name__ == "__main__":
         train_data = train_data.map(demo_prepare)
         train_data = train_data.batch(batch_size)
 
-
+    idx = 1
+    
     for batch in train_data.take(100):
         if demo is False:
             batch = batch['image']
@@ -70,20 +71,25 @@ if __name__ == "__main__":
             b_channel = lab[i, :, :, 2]
         
             rows = 1
-            cols = 3
+            cols = 4
             fig = plt.figure()
-
+            
             ax0 = fig.add_subplot(rows, cols, 1)
+            ax0.imshow(img[i])
+            ax0.set_title('RGB')
+            ax0.axis("off")
+
+            ax0 = fig.add_subplot(rows, cols, 2)
             ax0.imshow(l_channel)
             ax0.set_title('L channel')
             ax0.axis("off")
 
-            ax0 = fig.add_subplot(rows, cols, 2)
+            ax0 = fig.add_subplot(rows, cols, 3)
             ax0.imshow(a_channel)
             ax0.set_title('a channel')
             ax0.axis("off")
 
-            ax0 = fig.add_subplot(rows, cols, 3)
+            ax0 = fig.add_subplot(rows, cols, 4)
             ax0.imshow(b_channel)
             ax0.set_title('b channel')
             ax0.axis("off")
@@ -95,8 +101,9 @@ if __name__ == "__main__":
             # ax0.set_title('B channel')
             # ax0.axis("off")
 
-            plt.show()
-            
+
+            plt.savefig('./test/' + str(idx)+'.png', dpi=300)
+            idx += 1
 
         # yuv = tfio.experimental.color.rgb_to_yuv(lab)
         

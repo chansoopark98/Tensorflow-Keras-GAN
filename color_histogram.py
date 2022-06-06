@@ -18,11 +18,39 @@ def get_histogram():
 
     pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
 
+    
     for sample in pbar:
-        print('batch')
-        img = sample['image'].numpy()
+        img = sample['image']
+        img /= 255
+        img = tf.cast(img, tf.float32)
+        lab = tfio.experimental.color.rgb_to_lab(img).numpy()
+
+        l_channel = lab[:, :, :, 0]
+        a_channel = lab[:, :, :, 1] 
+        a_channel += 127
+        b_channel = lab[:, :, :, 2]
+        b_channel += 127
+
+        rows = 1
+        cols = 3
+        fig = plt.figure()
         
-        plt.hist(img.ravel(), 256, [0, 256])
+
+        ax0 = fig.add_subplot(rows, cols, 1)
+        ax0.hist(l_channel.ravel(), 100, [0, 100])
+        ax0.set_title('L channel')
+        ax0.axis("off")
+
+        ax1 = fig.add_subplot(rows, cols, 2)
+        ax1.hist(a_channel.ravel(), 256, [0, 256])
+        ax1.set_title('a channel')
+        ax1.axis("off")
+
+        ax2 = fig.add_subplot(rows, cols, 3)
+        ax2.hist(b_channel.ravel(), 256, [0, 256])
+        ax2.set_title('b channel')
+        ax2.axis("off")
+            
         plt.show()
 
 

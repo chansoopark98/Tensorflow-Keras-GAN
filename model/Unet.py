@@ -44,6 +44,7 @@ class Unet():
         
         # define model
         model = Model(input_src_image, out_image, name='generator_model')
+        model.trainable = True
 
         return model
 

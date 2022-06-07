@@ -44,34 +44,13 @@ class Pix2Pix():
         # Number of filters in the first layer of G and D
         self.gf = 64
         self.df = 64
-
-        opt = Adam(lr=0.0002, beta_1=0.5)
+        self.unet = Unet(self.image_size)
+        self.model = self.unet.build_generator()
+        self.dis_model = self.build_discriminator()
+        self.gen_opt = Adam(lr=0.0002, beta_1=0.5)
+        self.disc_opt = Adam(lr=0.0002, beta_1=0.5)
         # opt = mixed_precision.LossScaleOptimizer(opt, loss_scale='dynamic')
 
-        # Build discriminator
-        self.d_model = self.build_discriminator()
-        self.d_model.compile(loss=self.discriminator_loss, optimizer=opt, metrics=['accuracy'])
-
-        
-        # Build generator
-        self.gen_model = self.build_generator()
-    
-        self.d_model.trainable = False
-        
-        input_src_image = Input(shape=(self.image_size[0], self.image_size[1], 1)) # Input = L channel input
-        gen_out = self.gen_model(input_src_image) # return ab channel
-        
-        # (B, H, W, 3)
-        generate_lab = tf.concat([input_src_image, gen_out], axis=-1)
-        
-        # connect the source input and generator output to the discriminator input
-        dis_out = self.d_model(generate_lab) #  L, ab channel
-
-        # src image as input, generated image and real/fake classification as output
-        self.gan_model = Model(input_src_image, [dis_out, gen_out], name='gan_model')
-        
-        self.gan_model.compile(loss=[self.discriminator_loss, self.generator_loss], metrics = ['accuracy', 'mae'], optimizer=opt, loss_weights=[1, 100])
-        self.gan_model.summary()
 
     def generator_loss(self, y_true, y_pred):
         """_summary_
@@ -81,7 +60,6 @@ class Pix2Pix():
             y_pred (Tensor, float32 ((B,H,W,2)): dl model prediction
         """
         # Calculate mae Loss
-        mae_loss = mean_absolute_error(y_true=y_true, y_pred=y_pred)
         # a_ssim_loss = 1 - tf.reduce_mean(tf.image.ssim(y_true[:, :, :, 1:], y_pred[:, :, :, 1:], max_val=2.0))
         # b_ssim_loss = 1 - tf.reduce_mean(tf.image.ssim(y_true[:, :, :, :1], y_pred[:, :, :, :1], max_val=2.0))
         
@@ -94,25 +72,12 @@ class Pix2Pix():
         
         # total_loss = scaled_mae + scaled_ssim
         
-        return mae_loss
+        return MeanAbsoluteError()(y_true, y_pred)
     
     def discriminator_loss(self, y_true, y_pred):
-        # Calculate bce Loss
-        dis_loss = tf.reduce_mean(binary_crossentropy(y_true=y_true, y_pred=y_pred, from_logits=True))
-        
-        # Calculate mse loss
-        # dis_loss = mean_squared_error(y_true=y_true, y_pred=y_pred)
-        
-        return dis_loss
-        
-    def build_generator(self):
-        unet = Unet(image_size=(self.image_size))
-        model = unet.build_generator()
-        
-        # resUnet = ResUNet(image_size=(self.image_size))
-        # model = resUnet.res_u_net_generator()
-        
-        return model
+
+        return MeanSquaredError()(y_true, y_pred)
+
 
 
     def build_discriminator(self):
@@ -145,6 +110,7 @@ class Pix2Pix():
     
         # define model
         model = Model(input_src_image, output, name='discriminator_model')
+        model.trainable = True
         return model
 
     def demo_prepare(self, path):
@@ -272,13 +238,42 @@ class Pix2Pix():
         return (l_channel, ab_channel, norm_rgb)
 
     
+    @tf.function
+    def train_step(self, l_channel, ab_channel):
+        lab = tf.concat([l_channel, ab_channel], axis=-1)
+
+        fake_y_dis = tf.zeros((self.BATCH_SIZE,) + self.disc_patch)
+        real_y_dis = tf.ones((self.BATCH_SIZE,) + self.disc_patch)
+
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+
+            pred_ab = self.model(l_channel)
+            pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
+
+            real_output = self.dis_model(lab)
+            fake_output = self.dis_model(pred_lab)
+
+            gen_loss = self.generator_loss(y_true=lab, y_pred=pred_lab)
+            disc_real = self.discriminator_loss(y_true=real_y_dis, y_pred=real_output)
+            disc_fake = self.discriminator_loss(y_true=fake_y_dis, y_pred=fake_output)
+            disc_loss = 0.5 * tf.add(disc_fake, disc_real)
+
+            gradients_of_generator = gen_tape.gradient(gen_loss, self.model.trainable_variables)
+            gradients_of_discriminator = disc_tape.gradient(disc_loss, self.dis_model.trainable_variables)
+
+            self.gen_opt.apply_gradients(zip(gradients_of_generator, self.model.trainable_variables))
+            self.disc_opt.apply_gradients(zip(gradients_of_discriminator, self.dis_model.trainable_variables))
+
+            return gen_loss, disc_loss
+
+
     def train(self):
         EPOCHS = 100
-        BATCH_SIZE = 8
+        self.BATCH_SIZE = 8
         INPUT_SHAPE_GEN = (self.image_size[0], self.image_size[1], 1)
         
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
-        disc_patch = (patch, patch, 1)
+        self.disc_patch = (patch, patch, 1)
         DATASET_DIR ='./datasets'
         CHECKPOINT_DIR = './checkpoints'
         CURRENT_DATE = str(time.strftime('%m%d', time.localtime(time.time()))) + '_' + self.prefix
@@ -296,10 +291,10 @@ class Pix2Pix():
 
         number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
         print("학습 데이터 개수", number_train)
-        steps_per_epoch = number_train // BATCH_SIZE
+        steps_per_epoch = number_train // self.BATCH_SIZE
         train_data = train_data.shuffle(1024)
         train_data = train_data.map(self.data_augmentation)
-        train_data = train_data.padded_batch(BATCH_SIZE)
+        train_data = train_data.padded_batch(self.BATCH_SIZE)
         train_data = train_data.prefetch(tf.data.experimental.AUTOTUNE)
 
         # prepare validation dataset
@@ -309,7 +304,6 @@ class Pix2Pix():
         demo_test = demo_imgs.map(self.demo_prepare)
         demo_test = demo_test.batch(1)
         demo_steps = len(filenames) // 1
-
 
 
         d_real = [0, 0]
@@ -324,74 +318,15 @@ class Pix2Pix():
                 #  Train Discriminator
                 # ---------------------
                 # img = tf.cast(features['image'], tf.float32)
-                original_lab = tf.concat([l_channel, ab_channel], axis=-1)
-                
-                pred_ab = self.gen_model.predict(l_channel)
-                
-                pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
 
-                # Unfreeze the discriminator
-                self.d_model.trainable = True
+                gen_loss, disc_loss = self.train_step(l_channel, ab_channel)
                 
-                fake_y_dis = tf.zeros((BATCH_SIZE,) + disc_patch)
-                real_y_dis = tf.ones((BATCH_SIZE,) + disc_patch)
-        
-                if tf.random.uniform([]) < 0.05:
-                    real_factor = tf.random.uniform([], minval=0.8, maxval=1.)
-                    real_y_dis *= real_factor
-                    
+                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f" % (epoch, 0., 0.))
                 
-                d_real = self.d_model.train_on_batch(original_lab, real_y_dis)
-                d_fake = self.d_model.train_on_batch(pred_lab, fake_y_dis)
-                
-                dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                # Freeze the discriminator
-                self.d_model.trainable = False
-                    
-                gan_res = self.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
-                
-                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
-                                            dis_res[0],
-                                            dis_res[1],
-                                            gan_res[0],
-                                            gan_res[1],
-                                            gan_res[2],
-                                            gan_res[3] * 100))
-                
-            # if epoch % 5 == 0:
-            self.gen_model.save_weights(WEIGHTS_GEN + '_'+ str(epoch) + '.h5', overwrite=True)
-            self.d_model.save_weights(WEIGHTS_DIS + '_'+ str(epoch) + '.h5', overwrite=True)
-            self.gan_model.save_weights(WEIGHTS_GAN + '_'+ str(epoch) + '.h5', overwrite=True)
-            
-            save_results_path = DEMO_OUTPUT + '/' + self.prefix + '/'+ str(epoch)
-            os.makedirs(save_results_path, exist_ok=True)
-
-            # validation
-            for img in demo_test:
-                img = tf.image.resize(img, (self.image_size[0], self.image_size[1]), tf.image.ResizeMethod.BILINEAR)
-                
-                l_channel, _ = self.rgb_to_lab(rgb=img[0])
-                
-                l_channel = tf.expand_dims(l_channel, axis=0)
-                
-                pred_ab = self.gen_model.predict(l_channel)
-                
-                
-                pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
-
-                for i in range(len(pred_lab)):
-                    
-                    rgb = self.lab_to_rgb(lab=pred_lab[i])
-                    
-                    plt.imshow(rgb)
-
-                    plt.savefig(save_results_path + '/' + str(index)+'.png', dpi=200)
-                    index +=1
-                    
                     
 if __name__ == '__main__':
-    strategy = tf.distribute.MirroredStrategy()
-    with strategy.scope():
-        gan = Pix2Pix()
-        gan.train()
+    # strategy = tf.distribute.MirroredStrategy()
+    # with strategy.scope():
+    gan = Pix2Pix()
+    gan.train()

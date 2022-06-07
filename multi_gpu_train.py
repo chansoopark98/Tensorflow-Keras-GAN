@@ -25,7 +25,6 @@ class Pix2Pix():
     def __init__(self):
         # Set model prefix name
         self.prefix = 'Final'
-        
         # Input shape
         self.img_rows = 512
         self.img_cols = 512
@@ -71,12 +70,15 @@ class Pix2Pix():
         # scaled_ssim = alpha * ssim_loss
         
         # total_loss = scaled_mae + scaled_ssim
-        
-        return MeanAbsoluteError()(y_true, y_pred)
+        loss = mean_absolute_error(y_true, y_pred)
+        loss = tf.reduce_mean(loss)
+
+        return loss
     
     def discriminator_loss(self, y_true, y_pred):
-
-        return MeanSquaredError()(y_true, y_pred)
+        loss = mean_squared_error(y_true, y_pred)
+        loss = tf.reduce_mean(loss)
+        return loss
 
 
 
@@ -118,7 +120,7 @@ class Pix2Pix():
         img = tf.image.decode_image(img, channels=3)
         return (img)
     
-    
+    @tf.function
     def rgb_to_lab(self, rgb):
         """
         Convert to rgb image to lab image
@@ -264,12 +266,20 @@ class Pix2Pix():
             self.gen_opt.apply_gradients(zip(gradients_of_generator, self.model.trainable_variables))
             self.disc_opt.apply_gradients(zip(gradients_of_discriminator, self.dis_model.trainable_variables))
 
-            return gen_loss, disc_loss
+            return (gen_loss, disc_loss)
 
+    @tf.function
+    def distributed_train_step(self, l_channel, ab_channel):
+        gen_per_replica_losses = strategy.run(self.train_step, args=(l_channel, ab_channel,))
+        gen_loss = strategy.reduce(tf.distribute.ReduceOp.MEAN, gen_per_replica_losses,
+                         axis=None)
+        # dis_loss = strategy.reduce(tf.distribute.ReduceOp.MEAN, dis_per_replica_losses,
+        #                  axis=None)
+        return gen_loss
 
     def train(self):
         EPOCHS = 100
-        self.BATCH_SIZE = 8
+        self.BATCH_SIZE = 16
         INPUT_SHAPE_GEN = (self.image_size[0], self.image_size[1], 1)
         
         patch = int(INPUT_SHAPE_GEN[0] / 2**4)
@@ -319,14 +329,14 @@ class Pix2Pix():
                 # ---------------------
                 # img = tf.cast(features['image'], tf.float32)
 
-                gen_loss, disc_loss = self.train_step(l_channel, ab_channel)
-                
-                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f" % (epoch, 0., 0.))
+                # gen_loss, disc_loss = self.train_step(l_channel, ab_channel)
+                gen_loss = self.distributed_train_step(l_channel, ab_channel)
+                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f" % (epoch, gen_loss[0], gen_loss[1]))
                 
 
                     
 if __name__ == '__main__':
-    # strategy = tf.distribute.MirroredStrategy()
-    # with strategy.scope():
-    gan = Pix2Pix()
-    gan.train()
+    strategy = tf.distribute.MirroredStrategy()
+    with strategy.scope():
+        gan = Pix2Pix()
+        gan.train()

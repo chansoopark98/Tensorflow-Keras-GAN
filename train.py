@@ -4,11 +4,9 @@ import tensorflow as tf
 import argparse
 import time
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 import os
 
 parser = argparse.ArgumentParser()
-
 parser.add_argument("--model_prefix",     type=str,   help="Model name", default='320_180_test1_sigle_GPU_bs8')
 parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=2)
 parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=50)
@@ -66,7 +64,6 @@ if __name__ == '__main__':
     valid_data = dataset_config.get_validData(dataset_config.valid_data)
     valid_per_epoch = dataset_config.number_valid // args.batch_size
 
-
     for epoch in range(args.epoch):
         pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
         valid_pbar = tqdm(valid_data, total=valid_per_epoch, desc='Valid Batch', leave=True, disable=False)
@@ -76,9 +73,8 @@ if __name__ == '__main__':
                 # ---------------------
                 #  Train Discriminator
                 # ---------------------
-
                 original_lab = tf.concat([l_channel, ab_channel], axis=-1)
-                
+        
                 pred_ab = gan.gen_model.predict(l_channel)
                 
                 pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
@@ -104,7 +100,8 @@ if __name__ == '__main__':
                 # ---------------------
                 gan_res = gan.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
                 
-                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (epoch,
+                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (
+                                            epoch,
                                             dis_res[0],
                                             dis_res[1],
                                             gan_res[0],

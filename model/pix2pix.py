@@ -1,36 +1,27 @@
 import tensorflow as tf
-import os
 from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras.layers import (
     UpSampling2D, Activation, BatchNormalization, Conv2D,  Concatenate, LeakyReLU, MaxPooling2D, Input, Flatten, Dense, Dropout, concatenate,
     DepthwiseConv2D,  ZeroPadding2D, Conv2DTranspose, GlobalAveragePooling2D)
-from model.ResUnet import ResUNet
 from model.Unet import Unet
 from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.losses import binary_crossentropy, mean_absolute_error, MeanAbsoluteError, MeanSquaredError, BinaryCrossentropy, mean_squared_error
 from tensorflow.keras.mixed_precision import experimental as mixed_precision
-import tensorflow.keras.backend as K
-from tqdm import tqdm
-import time
-import tensorflow_datasets as tfds
-import matplotlib.pyplot as plt
-import tensorflow_io as tfio
-# LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal
-# LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4.5.9" python gan_train.py
-
+from tensorflow.keras.metrics import mean_absolute_error
 
 class Pix2Pix():
     def __init__(self,
-                 model_prefix: str,
+                 args,
                  image_size: tuple,
                  gen_input_channel: int,
                  gen_output_channel: int,
                  dis_input_channel: int):
 
         # Set model prefix name
-        self.prefix = model_prefix
+        self.prefix = args.model_prefix
+        self.mixed_precision = args.mixed_precision
 
 
         # Input shape
@@ -39,9 +30,13 @@ class Pix2Pix():
         self.gen_output_channel = gen_output_channel
         self.dis_input_channel = dis_input_channel
 
+        opt = Adam(lr=args.lr, beta_1=0.5)
+
         # Set mixed precision
-        # self.policy = mixed_precision.Policy('mixed_float16', loss_scale=1024)
-        # mixed_precision.set_policy(self.policy)
+        if self.mixed_precision:
+            self.policy = mixed_precision.Policy('mixed_float16', loss_scale=1024)
+            mixed_precision.set_policy(self.policy)
+            opt = mixed_precision.LossScaleOptimizer(opt, loss_scale='dynamic')
 
         # Calculate output shape of D (PatchGAN)
         patch = int(self.image_size[0] / 2**4)
@@ -51,8 +46,6 @@ class Pix2Pix():
         self.gf = 64
         self.df = 64
 
-        opt = Adam(lr=0.0002, beta_1=0.5)
-        # opt = mixed_precision.LossScaleOptimizer(opt, loss_scale='dynamic')
 
         # Build discriminator
         self.d_model = self.build_discriminator(
@@ -145,6 +138,19 @@ class Pix2Pix():
         # define model
         model = Model(input_src_image, output, name='discriminator_model')
         return model
+
+    def calc_metric(self, y_true, y_pred, method='mae'):
+        if method == 'mae':
+            metric = mean_absolute_error(y_true, y_pred)
+        metric = tf.reduce_mean(metric)
+        return metric
+
+
+    
+    def save_weights(self, save_path: str, epoch: int, save_gen=True, save_dis=True, save_gan=True):
+            self.gen_model.save_weights(save_path + '_gen_'+ str(epoch) + '.h5', overwrite=True)
+            self.d_model.save_weights(save_path + '_dis_'+ str(epoch) + '.h5', overwrite=True)
+            self.gan_model.save_weights(save_path + '_gan_'+ str(epoch) + '.h5', overwrite=True)
 
 
 if __name__ == '__main__':

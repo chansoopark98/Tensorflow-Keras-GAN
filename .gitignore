@@ -9,9 +9,6 @@ results/
 demo_outputs/
 GAN/images/
 predict_outputs/
-test/day
-test/imageAlignedLD/
-test/night
 # C extensions
 *.so
 

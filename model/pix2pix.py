@@ -39,7 +39,7 @@ class Pix2Pix():
             opt = mixed_precision.LossScaleOptimizer(opt, loss_scale='dynamic')
 
         # Calculate output shape of D (PatchGAN)
-        patch = int(self.image_size[0] / 2**4)
+        patch = int(self.image_size[0] / 2**5)
         self.disc_patch = (patch, patch, 1)
 
         # Build discriminator
@@ -102,32 +102,34 @@ class Pix2Pix():
         src_image_shape = (image_size[0], image_size[1], input_channel)
         input_src_image = Input(shape=src_image_shape)
 
-        # C64
-        d = Conv2D(64, (4, 4), strides=(2, 2), padding='same',
+        # C32
+        d = Conv2D(32, (4, 4), strides=(2, 2), padding='same',
                    use_bias=True, kernel_initializer=kernel_weights_init)(input_src_image)
         d = LeakyReLU(alpha=0.2)(d)
-        d = Dropout(0.5)(d)
+
+        # C64
+        d = Conv2D(64, (4, 4), strides=(2, 2), padding='same',
+                   use_bias=False, kernel_initializer=kernel_weights_init)(d)
+        d = BatchNormalization(momentum=0.8)(d)
+        d = LeakyReLU(alpha=0.2)(d)
 
         # C128
         d = Conv2D(128, (4, 4), strides=(2, 2), padding='same',
                    use_bias=False, kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization(momentum=0.8)(d)
         d = LeakyReLU(alpha=0.2)(d)
-        d = Dropout(0.5)(d)
 
         # C256
         d = Conv2D(256, (4, 4), strides=(2, 2), padding='same',
                    use_bias=False, kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization(momentum=0.8)(d)
         d = LeakyReLU(alpha=0.2)(d)
-        d = Dropout(0.5)(d)
 
         # C512
         d = Conv2D(512, (4, 4), strides=(2, 2), padding='same',
                    use_bias=False, kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization(momentum=0.8)(d)
         d = LeakyReLU(alpha=0.2)(d)
-        d = Dropout(0.5)(d)
 
         # for patchGAN
         output = Conv2D(1, (4, 4), strides=(1, 1), padding='same',

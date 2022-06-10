@@ -125,9 +125,7 @@ if __name__ == '__main__':
             'Generator MAE': gan_res[3] * 100
         }
                 
-                
-
-
+    
         # Save Training Weights
         if args.save_weight:
             if epoch % args.save_frac == 0:

@@ -27,10 +27,10 @@ class Unet():
 
         # decoder model
         d3 = self._decoder_block(b, e5, 512)
-        d4 = self._decoder_block(d3, e4, 256, dropout=False)
-        d5 = self._decoder_block(d4, e3, 128, dropout=False)
-        d6 = self._decoder_block(d5, e2, 64, dropout=False)
-        d7 = self._decoder_block(d6, e1, 32, dropout=False)
+        d4 = self._decoder_block(d3, e4, 256, dropout=True)
+        d5 = self._decoder_block(d4, e3, 128, dropout=True)
+        d6 = self._decoder_block(d5, e2, 64, dropout=True)
+        d7 = self._decoder_block(d6, e1, 32, dropout=True)
 
         # output
         # g = UpSampling2D()(d7)

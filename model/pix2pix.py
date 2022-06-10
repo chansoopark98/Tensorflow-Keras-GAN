@@ -42,11 +42,6 @@ class Pix2Pix():
         patch = int(self.image_size[0] / 2**4)
         self.disc_patch = (patch, patch, 1)
 
-        # Number of filters in the first layer of G and D
-        self.gf = 64
-        self.df = 64
-
-
         # Build discriminator
         self.d_model = self.build_discriminator(
             image_size=self.image_size, input_channel=self.dis_input_channel)
@@ -107,29 +102,32 @@ class Pix2Pix():
         src_image_shape = (image_size[0], image_size[1], input_channel)
         input_src_image = Input(shape=src_image_shape)
 
-        # concatenate images channel-wise
-        # merged = Concatenate()([input_src_image, input_target_image])
-        merged = input_src_image
-
         # C64
         d = Conv2D(64, (4, 4), strides=(2, 2), padding='same',
-                   use_bias=True, kernel_initializer=kernel_weights_init)(merged)
+                   use_bias=True, kernel_initializer=kernel_weights_init)(input_src_image)
         d = LeakyReLU(alpha=0.2)(d)
+        d = Dropout(0.5)(d)
+
         # C128
         d = Conv2D(128, (4, 4), strides=(2, 2), padding='same',
                    use_bias=False, kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization(momentum=0.8)(d)
         d = LeakyReLU(alpha=0.2)(d)
+        d = Dropout(0.5)(d)
+
         # C256
         d = Conv2D(256, (4, 4), strides=(2, 2), padding='same',
                    use_bias=False, kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization(momentum=0.8)(d)
         d = LeakyReLU(alpha=0.2)(d)
+        d = Dropout(0.5)(d)
+
         # C512
         d = Conv2D(512, (4, 4), strides=(2, 2), padding='same',
                    use_bias=False, kernel_initializer=kernel_weights_init)(d)
         d = BatchNormalization(momentum=0.8)(d)
         d = LeakyReLU(alpha=0.2)(d)
+        d = Dropout(0.5)(d)
 
         # for patchGAN
         output = Conv2D(1, (4, 4), strides=(1, 1), padding='same',
@@ -138,6 +136,7 @@ class Pix2Pix():
         # define model
         model = Model(input_src_image, output, name='discriminator_model')
         return model
+
 
     def calc_metric(self, y_true, y_pred, method='mae'):
         if method == 'mae':
@@ -148,8 +147,11 @@ class Pix2Pix():
 
     
     def save_weights(self, save_path: str, epoch: int, save_gen=True, save_dis=True, save_gan=True):
+        if save_gen:
             self.gen_model.save_weights(save_path + '_gen_'+ str(epoch) + '.h5', overwrite=True)
+        if save_dis:
             self.d_model.save_weights(save_path + '_dis_'+ str(epoch) + '.h5', overwrite=True)
+        if save_gan:
             self.gan_model.save_weights(save_path + '_gan_'+ str(epoch) + '.h5', overwrite=True)
 
 

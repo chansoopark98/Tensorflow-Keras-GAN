@@ -37,7 +37,7 @@ class Dataset:
         # train[:1%] -> 300
         # train[1%:] -> 29700
         train_data = tfds.load(self.dataset_name,
-                               data_dir=self.data_dir, split='train[:1%]')
+                               data_dir=self.data_dir, split='train[1%:]')
 
         number_train = train_data.reduce(0, lambda x, _: x + 1).numpy()
         print("학습 데이터 개수", number_train)

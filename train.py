@@ -1,14 +1,17 @@
 from utils.datasets import Dataset
 from model.pix2pix import Pix2Pix
+from utils.tensorboard import WriteTensorboard
 import tensorflow as tf
 import argparse
 import time
 from tqdm import tqdm
 import os
 
+# LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4.3.0" python train.py
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--model_prefix",     type=str,   help="Model name", default='320_180_test1_sigle_GPU_bs8')
-parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=2)
+parser.add_argument("--model_prefix",     type=str,   help="Model name", default='New_code')
+parser.add_argument("--batch_size",     type=int,   help="배치 사이즈값 설정", default=8)
 parser.add_argument("--epoch",          type=int,   help="에폭 설정", default=50)
 parser.add_argument("--lr",             type=float, help="Learning rate 설정", default=0.001)
 parser.add_argument("--optimizer",     type=str,   help="Optimizer", default='adam')
@@ -64,50 +67,65 @@ if __name__ == '__main__':
     valid_data = dataset_config.get_validData(dataset_config.valid_data)
     valid_per_epoch = dataset_config.number_valid // args.batch_size
 
+    tensorboard = WriteTensorboard(date_time=args.model_name,
+                                   tensorboard_dir=args.tensorboard_dir,
+                                   model_prefix=args.model_prefix)
+
     for epoch in range(args.epoch):
         pbar = tqdm(train_data, total=steps_per_epoch, desc='Batch', leave=True, disable=False)
         valid_pbar = tqdm(valid_data, total=valid_per_epoch, desc='Valid Batch', leave=True, disable=False)
 
         #  Train Session
         for l_channel, ab_channel, _ in pbar:
-                # ---------------------
-                #  Train Discriminator
-                # ---------------------
-                original_lab = tf.concat([l_channel, ab_channel], axis=-1)
-        
-                pred_ab = gan.gen_model.predict(l_channel)
-                
-                pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
+            # ---------------------
+            #  Train Discriminator
+            # ---------------------
+            original_lab = tf.concat([l_channel, ab_channel], axis=-1)
+    
+            pred_ab = gan.gen_model.predict(l_channel)
+            
+            pred_lab = tf.concat([l_channel, pred_ab], axis=-1)
 
-                # Unfreeze the discriminator
-                gan.d_model.trainable = True
-                
-                fake_y_dis, real_y_dis = dataset_config.generate_patch_labels(
-                    batch_size=args.batch_size,
-                    disc_patch=gan.disc_patch,
-                    random_augment=True)
-                
-                d_real = gan.d_model.train_on_batch(original_lab, real_y_dis)
-                d_fake = gan.d_model.train_on_batch(pred_lab, fake_y_dis)
-                
-                dis_res = 0.5 * tf.add(d_fake, d_real)
+            # Unfreeze the discriminator
+            gan.d_model.trainable = True
+            
+            fake_y_dis, real_y_dis = dataset_config.generate_patch_labels(
+                batch_size=args.batch_size,
+                disc_patch=gan.disc_patch,
+                random_augment=True)
+            
+            d_real = gan.d_model.train_on_batch(original_lab, real_y_dis)
+            d_fake = gan.d_model.train_on_batch(pred_lab, fake_y_dis)
+            
+            dis_res = 0.5 * tf.add(d_fake, d_real)
 
-                # Freeze the discriminator
-                gan.d_model.trainable = False
+            # Freeze the discriminator
+            gan.d_model.trainable = False
+            
+            # ---------------------
+            #  Train Generator
+            # ---------------------
+            gan_res = gan.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
+            
+            pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f, Gan loss: %f, Gan ACC: %f Gen loss: %f Gen MAE: %f" % (
+                                        epoch,
+                                        dis_res[0],
+                                        dis_res[1],
+                                        gan_res[0],
+                                        gan_res[1],
+                                        gan_res[2],
+                                        gan_res[3] * 100))
                 
-                # ---------------------
-                #  Train Generator
-                # ---------------------
-                gan_res = gan.gan_model.train_on_batch(l_channel, [real_y_dis, ab_channel])
+        write_dict = {
+            'Discriminator Loss': dis_res[0],
+            'Discriminator Accuracy': dis_res[1],
+            'GAN Loss': gan_res[0],
+            'GAN Accuracy': gan_res[1],
+            'Generator Loss': gan_res[2],
+            'Generator MAE': gan_res[3] * 100
+        }
                 
-                pbar.set_description("Epoch : %d Dis loss: %f, Dis ACC: %f, Gan loss: %f, Gen loss: %f Gan ACC: %f Gen MAE: %f" % (
-                                            epoch,
-                                            dis_res[0],
-                                            dis_res[1],
-                                            gan_res[0],
-                                            gan_res[1],
-                                            gan_res[2],
-                                            gan_res[3] * 100))
+                
 
 
         # Save Training Weights
@@ -134,3 +152,12 @@ if __name__ == '__main__':
 
             valid_pbar.set_description("Valid mae: %f" % (
                                             mae_percent * 100))
+
+        valid_dict = {
+            'Generator MAE': mae_percent
+        }
+
+        # Logging Tensorboard
+        tensorboard.logging_train(write_dict, epoch_step=epoch)
+        tensorboard.logging_valid(valid_dict, epoch_step=epoch)
+        tensorboard.logging_images('images', rgb, epoch_step=epoch)

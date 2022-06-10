@@ -15,26 +15,22 @@ class Unet():
         input_src_image = Input(shape=gen_input_shape)
 
         # encoder model
-        e1 = self._encoder_block(input_src_image, 64, batchnorm=False)
-        e2 = self._encoder_block(e1, 128)
-        e3 = self._encoder_block(e2, 256)
-        e4 = self._encoder_block(e3, 512)
-        e5 = self._encoder_block(e4, 512)
-        e6 = self._encoder_block(e5, 512)
-        e7 = self._encoder_block(e6, 512)
+        e1 = self._encoder_block(input_src_image, 32, batchnorm=False) # 256 1/2
+        e2 = self._encoder_block(e1, 64) # 128 1/4
+        e3 = self._encoder_block(e2, 128) # 64 1/8
+        e4 = self._encoder_block(e3, 256) # 32 1/16
+        e5 = self._encoder_block(e4, 512) # 16 1/32
 
         # bottleneck, no batch norm and relu
-        b = Conv2D(512, (4,4), strides=(2,2), padding='same', use_bias=True, kernel_initializer=self.kernel_weights_init)(e7)
-        b = LeakyReLU(0.2)(b)
+        b = Conv2D(512, (4,4), strides=(2,2), padding='same', use_bias=True, kernel_initializer=self.kernel_weights_init)(e5)
+        b = Activation('relu')(b)
 
         # decoder model
-        d1 = self._decoder_block(b, e7, 512)
-        d2 = self._decoder_block(d1, e6, 512)
-        d3 = self._decoder_block(d2, e5, 512)
-        d4 = self._decoder_block(d3, e4, 512, dropout=False)
-        d5 = self._decoder_block(d4, e3, 256, dropout=False)
-        d6 = self._decoder_block(d5, e2, 128, dropout=False)
-        d7 = self._decoder_block(d6, e1, 64, dropout=False)
+        d3 = self._decoder_block(b, e5, 512)
+        d4 = self._decoder_block(d3, e4, 256, dropout=False)
+        d5 = self._decoder_block(d4, e3, 128, dropout=False)
+        d6 = self._decoder_block(d5, e2, 64, dropout=False)
+        d7 = self._decoder_block(d6, e1, 32, dropout=False)
 
         # output
         # g = UpSampling2D()(d7)

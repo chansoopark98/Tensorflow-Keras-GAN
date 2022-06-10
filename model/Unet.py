@@ -3,13 +3,15 @@ from tensorflow.keras.initializers import RandomNormal
 from tensorflow.keras.models import Model
 
 class Unet():
-    def __init__(self, image_size):
+    def __init__(self, image_size: tuple, input_channel: int, output_channel: int):
         self.image_size = image_size
+        self.input_channel = input_channel
+        self.output_channel = output_channel
         self.kernel_weights_init = RandomNormal(stddev=0.02)
     
     def build_generator(self):
 
-        gen_input_shape=(self.image_size[0], self.image_size[1], 1)
+        gen_input_shape=(self.image_size[0], self.image_size[1], self.input_channel)
         input_src_image = Input(shape=gen_input_shape)
 
         # encoder model
@@ -38,7 +40,7 @@ class Unet():
         # g = UpSampling2D()(d7)
         # g = Conv2D(filters=2, kernel_size=4, strides=1, padding='same', kernel_initializer=self.kernel_weights_init)(g)
         
-        g = Conv2DTranspose(2, (4,4), strides=(2,2), padding='same', kernel_initializer=self.kernel_weights_init)(d7)
+        g = Conv2DTranspose(self.output_channel, (4,4), strides=(2,2), padding='same', kernel_initializer=self.kernel_weights_init)(d7)
     
         out_image = Activation('tanh')(g)
         

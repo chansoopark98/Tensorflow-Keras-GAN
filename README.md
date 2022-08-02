@@ -4,8 +4,6 @@
 
 CNN(Convolutional Neural Network) 기반의 colorization을 구현한 레포지토리입니다.
 
-광운대학교 홀로그램 프로젝트
-
 <hr/>
 
 ## Table of Contents 
